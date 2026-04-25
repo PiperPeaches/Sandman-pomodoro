@@ -14,21 +14,22 @@ html, body {
   padding: 0;
   background-color: #0f172a;
   width: 350px;
+  height: 600px; /* Increased height for the list */
   overflow: hidden;
   color: white;
 }
 
 .container {
   width: 100%;
+  height: 100%;
   padding: 24px;
   box-sizing: border-box;
-  text-align: center;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 4px solid #8080801d;
-  border-radius: 8px;
+}
+
+.main-view {
+  text-align: center;
 }
 
 .title {
@@ -38,70 +39,114 @@ html, body {
 }
 
 .phrase {
-  margin: 8px 0 0 0; /* Increased to 8px gap */
+  margin: 8px 0 0 0;
   font-weight: normal;
   color: #94a3b8;
   font-size: 0.9rem;
 }
 
-.controls-wrapper {
-  display: flex;
-  justify-content: center;
-  gap: 8px; /* Increased to 8px gap */
-  margin-top: 20px;
-}
-
 .timer-container {
   position: relative;
-  width: 200px;
-  height: 200px;
+  width: 210px; /* Increased to fit the ring + stroke + glow */
+  height: 210px;
   margin: 10px auto;
   display: flex;
   justify-content: center;
   align-items: center;
 }
 
-.timer-text {
+.timer-text h2 {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   margin: 0;
-}
-
-.timer-text h2 {
-  margin: 0;
   font-size: 2.5rem;
   font-variant-numeric: tabular-nums;
 }
 
-.reset-btn {
-  background-color: transparent;
-  border: 1px solid #334155;
-}
-
-.reset-btn:hover {
-  background-color: #1e293b;
+.controls-wrapper {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 5px;
 }
 
 button {
-  margin-top: 15px;
   padding: 10px 24px;
   font-family: inherit;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: white;
   background-color: #334155;
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: background-color 0.2s, transform 0.1s;
 }
 
-button:hover {
-  background-color: #475569;
+/* Blocklist Section Styling */
+.blocklist-section {
+  margin-top: 30px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 15px;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-button:active {
-  transform: scale(0.98);
+.blocklist-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.add-site-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.add-site-form input {
+  flex-grow: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: white;
+  font-size: 0.85rem;
+}
+
+.add-site-form button {
+  padding: 6px 12px;
+  background-color: #b75fb5;
+}
+
+.site-list {
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.site-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.site-item button {
+  padding: 0 6px;
+  background: transparent;
+  color: #ef4444;
+  font-size: 1.2rem;
+}
+
+.site-item button:hover {
+  color: #f87171;
 }

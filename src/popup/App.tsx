@@ -11,13 +11,7 @@ const driftPhrases: string[] = [
 interface TimerState {
   timeLeft: number;
   isActive: boolean;
-  isAsleep: boolean;
-}
-
-interface TimerMessage {
-  type: string;
-  timeLeft: number;
-  isAsleep?: boolean;
+  blocklist: string[];
 }
 
 function App() {
@@ -28,22 +22,21 @@ function App() {
 
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [isActive, setIsActive] = useState(false);
-  const [isAsleep, setIsAsleep] = useState(false);
+  const [blocklist, setBlocklist] = useState<string[]>([]);
+  const [newSite, setNewSite] = useState("");
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response: TimerState) => {
       if (response) {
         setTimeLeft(response.timeLeft);
         setIsActive(response.isActive);
-        setIsAsleep(response.isAsleep);
+        setBlocklist(response.blocklist || []);
       }
     });
 
-    const listener = (message: TimerMessage) => {
+    const listener = (message: any) => {
       if (message.type === 'TICK') {
         setTimeLeft(message.timeLeft);
-      } else if (message.type === 'UPDATE_SLEEP') {
-        setIsAsleep(!!message.isAsleep);
       }
     };
 
@@ -67,9 +60,19 @@ function App() {
     setTimeLeft(25 * 60);
   };
 
-  const toggleSleep = () => {
-    chrome.runtime.sendMessage({ type: 'TOGGLE_SLEEP' }, (response) => {
-      if (response) setIsAsleep(response.isAsleep);
+  const addSite = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newSite.trim()) {
+      chrome.runtime.sendMessage({ type: 'ADD_BLOCK', site: newSite.trim().toLowerCase() }, (res) => {
+        if (res?.blocklist) setBlocklist(res.blocklist);
+        setNewSite("");
+      });
+    }
+  };
+
+  const removeSite = (site: string) => {
+    chrome.runtime.sendMessage({ type: 'REMOVE_BLOCK', site }, (res) => {
+      if (res?.blocklist) setBlocklist(res.blocklist);
     });
   };
 
@@ -85,28 +88,16 @@ function App() {
 
   return (
     <div className="container">
-      <div className="content">
+      <div className="main-view">
         <h1 className="title">The Sandman</h1>
         <h3 className="phrase">{displayPhrase}</h3>
         
         <div className="timer-container">
-          <svg width="200" height="200" style={{ transform: 'rotate(-90deg)' }}>
-            <circle
-              cx="100"
-              cy="100"
-              r="90"
-              fill="transparent"
-              stroke="#1e293b"
-              strokeWidth="8"
-            />
+          <svg width="210" height="210" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="105" cy="105" r="90" fill="transparent" stroke="#1e293b" strokeWidth="8" />
             <circle
               className="progress-ring"
-              cx="100"
-              cy="100"
-              r="90"
-              fill="transparent"
-              stroke="#b75fb5"
-              strokeWidth="8"
+              cx="105" cy="105" r="90" fill="transparent" stroke="#b75fb5" strokeWidth="8"
               strokeDasharray={circumference}
               strokeDashoffset={offset}
               strokeLinecap="round"
@@ -121,21 +112,29 @@ function App() {
           <button onClick={toggleTimer} className="main-btn">
             {isActive ? "Pause" : "Start"}
           </button>
-          <button onClick={resetTimer} className="reset-btn">
-            Reset
-          </button>
+          <button onClick={resetTimer} className="reset-btn">Reset</button>
         </div>
+      </div>
 
-        <button 
-          onClick={toggleSleep} 
-          style={{ 
-            marginTop: '20px', 
-            width: '100%', 
-            backgroundColor: isAsleep ? '#ef4444' : '#1e293b' 
-          }}
-        >
-          {isAsleep ? 'Wake Up Tabs' : 'Enable Sleep Tabs'}
-        </button>
+      <div className="blocklist-section">
+        <h4>Distractions</h4>
+        <form onSubmit={addSite} className="add-site-form">
+          <input 
+            type="text" 
+            placeholder="e.g. youtube.com" 
+            value={newSite}
+            onChange={(e) => setNewSite(e.target.value)}
+          />
+          <button type="submit">+</button>
+        </form>
+        <div className="site-list">
+          {blocklist.map(site => (
+            <div key={site} className="site-item">
+              <span>{site}</span>
+              <button onClick={() => removeSite(site)}>&times;</button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

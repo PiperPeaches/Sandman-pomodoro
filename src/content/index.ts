@@ -4,7 +4,6 @@ let sleepOverlay: HTMLDivElement | null = null;
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'UPDATE_SLEEP') {
-    // Only show if both are true: timer is active AND sleep is enabled
     if (message.isActive && message.isAsleep) {
       showSleepOverlay(message.timeLeft);
     } else {
@@ -18,12 +17,9 @@ chrome.runtime.onMessage.addListener((message) => {
 function showSleepOverlay(timeLeft: number) {
   if (sleepOverlay) return;
 
-  // Create the main container
   sleepOverlay = document.createElement('div');
   sleepOverlay.id = 'sandman-sleep-overlay';
   
-  // Apply backdrop-filter to the overlay itself so it blurs what's BEHIND it
-  // but keeps its own children (the text) sharp.
   Object.assign(sleepOverlay.style, {
     position: 'fixed',
     top: '0',
@@ -39,69 +35,91 @@ function showSleepOverlay(timeLeft: number) {
     fontFamily: 'system-ui, -apple-system, sans-serif',
     pointerEvents: 'all',
     userSelect: 'none',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    backdropFilter: 'grayscale(1) blur(15px)',
-    webkitBackdropFilter: 'grayscale(1) blur(15px)',
-    transition: 'opacity 1s ease-in-out'
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backdropFilter: 'grayscale(1) blur(25px) saturate(50%)',
+    webkitBackdropFilter: 'grayscale(1) blur(25px) saturate(50%)',
+    transition: 'opacity 10s ease-in-out'
   });
 
-  // Layer 1: Vignette (Pulsing background)
+  // Layer 1: Dreamy Color Shift Shader
+  const shader = document.createElement('div');
+  Object.assign(shader.style, {
+    position: 'absolute',
+    inset: '0',
+    background: 'linear-gradient(45deg, rgba(183, 95, 181, 0.1), rgba(124, 58, 237, 0.1), rgba(59, 130, 246, 0.1))',
+    animation: 'sandman-drift-bg 15s infinite alternate ease-in-out',
+    zIndex: '-1',
+    pointerEvents: 'none'
+  });
+
+  // Layer 2: Pulsing Vignette
   const vignette = document.createElement('div');
   Object.assign(vignette.style, {
     position: 'absolute',
     inset: '0',
-    background: 'radial-gradient(circle, transparent 20%, black 150%)',
-    animation: 'sandman-pulse 6s infinite alternate ease-in-out',
-    zIndex: '-1', // Behind the content
+    background: 'radial-gradient(circle, transparent 20%, black 140%)',
+    animation: 'sandman-vignette-pulse 10s infinite alternate ease-in-out',
+    zIndex: '-1',
     pointerEvents: 'none'
   });
 
-  // Layer 2: Text Content (Sharp on top)
+  // Layer 3: Text Content
   const content = document.createElement('div');
   Object.assign(content.style, {
     textAlign: 'center',
     padding: '40px',
-    zIndex: '1'
+    zIndex: '1',
+    animation: 'sandman-float 8s infinite alternate ease-in-out'
   });
 
   const text = document.createElement('h1');
   text.innerText = `${window.location.hostname} was put to sleep by Sandman`;
   Object.assign(text.style, {
-    fontSize: '2.5rem',
+    fontSize: '2.8rem',
     fontWeight: '200',
-    margin: '0 0 15px 0',
+    margin: '0 0 20px 0',
     color: 'white',
-    textShadow: '0 0 20px rgba(0,0,0,0.8)'
+    letterSpacing: '-0.04em',
+    textShadow: '0 0 40px rgba(0,0,0,0.9)',
+    opacity: '0.9'
   });
 
   const timer = document.createElement('p');
   timer.id = 'sandman-sleep-timer';
   timer.innerText = formatTime(timeLeft);
   Object.assign(timer.style, {
-    fontSize: '1.8rem',
+    fontSize: '2rem',
     fontWeight: '400',
     margin: '0',
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontVariantNumeric: 'tabular-nums'
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontVariantNumeric: 'tabular-nums',
+    letterSpacing: '0.05em'
   });
 
   content.appendChild(text);
   content.appendChild(timer);
+  sleepOverlay.appendChild(shader);
   sleepOverlay.appendChild(vignette);
   sleepOverlay.appendChild(content);
   
-  // Prevent scrolling on the body
   document.body.style.overflow = 'hidden';
   document.body.appendChild(sleepOverlay);
 
-  // Add the pulse animation
-  if (!document.getElementById('sandman-pulse-style')) {
+  if (!document.getElementById('sandman-dreamy-styles')) {
     const style = document.createElement('style');
-    style.id = 'sandman-pulse-style';
+    style.id = 'sandman-dreamy-styles';
     style.innerHTML = `
-      @keyframes sandman-pulse {
-        from { opacity: 0.4; }
-        to { opacity: 0.8; }
+      @keyframes sandman-vignette-pulse {
+        0% { opacity: 0.6; }
+        100% { opacity: 0.9; }
+      }
+      @keyframes sandman-drift-bg {
+        0% { transform: scale(1) rotate(0deg); }
+        100% { transform: scale(1.1) rotate(2deg); }
+      }
+      @keyframes sandman-float {
+        from { transform: translateY(0); }
+        to { transform: translateY(-15px); }
       }
     `;
     document.head.appendChild(style);

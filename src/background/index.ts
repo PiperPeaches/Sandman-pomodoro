@@ -2,38 +2,79 @@
 
 let timeLeft = 25 * 60;
 let isActive = false;
-let isAsleep = false;
 let timerInterval: number | null = null;
+let blocklist: string[] = [
+  'facebook.com',
+  'twitter.com',
+  'x.com',
+  'youtube.com',
+  'instagram.com',
+  'reddit.com',
+  'netflix.com',
+  'twitch.tv'
+];
+
+// Initialize from storage
+chrome.storage.local.get(['blocklist'], (result) => {
+  if (result.blocklist && Array.isArray(result.blocklist)) {
+    blocklist = result.blocklist;
+  } else {
+    chrome.storage.local.set({ blocklist });
+  }
+});
 
 interface TimerMessage {
-  type: 'GET_STATE' | 'START_TIMER' | 'PAUSE_TIMER' | 'RESET_TIMER' | 'TICK' | 'TOGGLE_SLEEP' | 'UPDATE_SLEEP';
+  type: string;
   timeLeft?: number;
   isActive?: boolean;
-  isAsleep?: boolean;
+  site?: string;
 }
 
 chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendResponse) => {
   if (message.type === 'GET_STATE') {
-    sendResponse({ timeLeft, isActive, isAsleep });
+    sendResponse({ timeLeft, isActive, blocklist });
   } else if (message.type === 'START_TIMER') {
     isActive = true;
     startCounting();
-    broadcastSleep(); // Update tabs when starting
+    broadcastSleep();
   } else if (message.type === 'PAUSE_TIMER') {
     isActive = false;
     stopCounting();
-    broadcastSleep(); // Update tabs when pausing
+    broadcastSleep();
   } else if (message.type === 'RESET_TIMER') {
     isActive = false;
     timeLeft = 25 * 60;
     stopCounting();
-    broadcastSleep(); // Update tabs when resetting
-  } else if (message.type === 'TOGGLE_SLEEP') {
-    isAsleep = !isAsleep;
     broadcastSleep();
-    sendResponse({ isAsleep });
+  } else if (message.type === 'ADD_BLOCK') {
+    if (message.site && !blocklist.includes(message.site)) {
+      blocklist.push(message.site);
+      chrome.storage.local.set({ blocklist });
+      broadcastSleep();
+      sendResponse({ blocklist });
+    }
+  } else if (message.type === 'REMOVE_BLOCK') {
+    if (message.site) {
+      blocklist = blocklist.filter(s => s !== message.site);
+      chrome.storage.local.set({ blocklist });
+      broadcastSleep();
+      sendResponse({ blocklist });
+    }
   }
   return true;
+});
+
+// Ensure tabs stay asleep on refresh or new navigation
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    const isDistracting = blocklist.some(site => tab.url?.includes(site));
+    chrome.tabs.sendMessage(tabId, { 
+      type: 'UPDATE_SLEEP', 
+      isAsleep: isDistracting, 
+      isActive, 
+      timeLeft 
+    }).catch(() => {});
+  }
 });
 
 function startCounting() {
@@ -66,7 +107,19 @@ function stopCounting() {
 }
 
 function broadcastSleep() {
-  broadcastToTabs({ type: 'UPDATE_SLEEP', isAsleep, isActive, timeLeft });
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id && tab.url) {
+        const isDistracting = blocklist.some(site => tab.url?.includes(site));
+        chrome.tabs.sendMessage(tab.id, { 
+          type: 'UPDATE_SLEEP', 
+          isAsleep: isDistracting, 
+          isActive, 
+          timeLeft 
+        }).catch(() => {});
+      }
+    });
+  });
 }
 
 function broadcastToTabs(message: any) {
