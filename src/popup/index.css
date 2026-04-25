@@ -1,0 +1,33 @@
+@font-face {
+  font-family: 'MontserratAlternates';
+  src: url('/fonts/MontserratAlternates-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+:root {
+  font-family: 'MontserratAlternates', system-ui, sans-serif;
+}
+
+.container {
+  width: 300px;
+  padding: 20px;
+  background-color: #0f172a;
+  color: white;
+  text-align: center;
+}
+
+.title {
+  margin-top: 0;
+}
+
+.phrase {
+  font-weight: normal;
+  color: #94a3b8;
+}
+
+.container {
+  /* ... your existing styles ... */
+  border: 10px solid white; /* A slightly lighter blue than your background */
+  border-radius: 12px;       /* This rounds the corners for a modern feel */
+}
