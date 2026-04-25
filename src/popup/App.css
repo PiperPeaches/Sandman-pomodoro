@@ -38,10 +38,17 @@ html, body {
 }
 
 .phrase {
-  margin: 2px 0 0 0; /* Further reduced gap */
+  margin: 8px 0 0 0; /* Increased to 8px gap */
   font-weight: normal;
   color: #94a3b8;
   font-size: 0.9rem;
+}
+
+.controls-wrapper {
+  display: flex;
+  justify-content: center;
+  gap: 8px; /* Increased to 8px gap */
+  margin-top: 20px;
 }
 
 .timer-container {

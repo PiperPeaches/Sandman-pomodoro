@@ -8,6 +8,18 @@ const driftPhrases: string[] = [
   "Fading into the mist...",
 ];
 
+interface TimerState {
+  timeLeft: number;
+  isActive: boolean;
+  isAsleep: boolean;
+}
+
+interface TimerMessage {
+  type: string;
+  timeLeft: number;
+  isAsleep?: boolean;
+}
+
 function App() {
   const [displayPhrase] = useState(() => {
     const randomIndex = Math.floor(Math.random() * driftPhrases.length);
@@ -16,26 +28,49 @@ function App() {
 
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [isActive, setIsActive] = useState(false);
+  const [isAsleep, setIsAsleep] = useState(false);
 
   useEffect(() => {
-    let interval: number | undefined;
+    chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response: TimerState) => {
+      if (response) {
+        setTimeLeft(response.timeLeft);
+        setIsActive(response.isActive);
+        setIsAsleep(response.isAsleep);
+      }
+    });
 
-    if (isActive && timeLeft > 0) {
-      interval = window.setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
+    const listener = (message: TimerMessage) => {
+      if (message.type === 'TICK') {
+        setTimeLeft(message.timeLeft);
+      } else if (message.type === 'UPDATE_SLEEP') {
+        setIsAsleep(!!message.isAsleep);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, []);
+
+  const toggleTimer = () => {
+    if (isActive) {
+      chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
       setIsActive(false);
+    } else {
+      chrome.runtime.sendMessage({ type: 'START_TIMER' });
+      setIsActive(true);
     }
-
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft]);
-
-  const toggleTimer = () => setIsActive(!isActive);
+  };
   
   const resetTimer = () => {
+    chrome.runtime.sendMessage({ type: 'RESET_TIMER' });
     setIsActive(false);
     setTimeLeft(25 * 60);
+  };
+
+  const toggleSleep = () => {
+    chrome.runtime.sendMessage({ type: 'TOGGLE_SLEEP' }, (response) => {
+      if (response) setIsAsleep(response.isAsleep);
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -44,50 +79,62 @@ function App() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // SVG Progress calculation
   const totalSeconds = 25 * 60;
-  const circumference = 2 * Math.PI * 90; // 565.48
+  const circumference = 2 * Math.PI * 90;
   const offset = circumference - (timeLeft / totalSeconds) * circumference;
 
   return (
     <div className="container">
-      <h1 className="title">The Sandman</h1>
-      <h3 className="phrase">{displayPhrase}</h3>
-      
-      <div className="timer-container">
-        <svg width="200" height="200" style={{ transform: 'rotate(-90deg)' }}>
-          <circle
-            cx="100"
-            cy="100"
-            r="90"
-            fill="transparent"
-            stroke="#1e293b"
-            strokeWidth="8"
-          />
-          <circle
-            cx="100"
-            cy="100"
-            r="90"
-            fill="transparent"
-            stroke="#b75fb5"
-            strokeWidth="8"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 1s linear' }}
-          />
-        </svg>
-        <div className="timer-text">
-          <h2>{formatTime(timeLeft)}</h2>
+      <div className="content">
+        <h1 className="title">The Sandman</h1>
+        <h3 className="phrase">{displayPhrase}</h3>
+        
+        <div className="timer-container">
+          <svg width="200" height="200" style={{ transform: 'rotate(-90deg)' }}>
+            <circle
+              cx="100"
+              cy="100"
+              r="90"
+              fill="transparent"
+              stroke="#1e293b"
+              strokeWidth="8"
+            />
+            <circle
+              className="progress-ring"
+              cx="100"
+              cy="100"
+              r="90"
+              fill="transparent"
+              stroke="#b75fb5"
+              strokeWidth="8"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="timer-text">
+            <h2>{formatTime(timeLeft)}</h2>
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: 'flex', gap: '12px' }}>
-        <button onClick={toggleTimer}>
-          {isActive ? "Pause" : "Start"}
-        </button>
-        <button onClick={resetTimer} className="reset-btn">
-          Reset
+        <div className={`controls-wrapper ${isActive ? 'is-active' : ''}`}>
+          <button onClick={toggleTimer} className="main-btn">
+            {isActive ? "Pause" : "Start"}
+          </button>
+          <button onClick={resetTimer} className="reset-btn">
+            Reset
+          </button>
+        </div>
+
+        <button 
+          onClick={toggleSleep} 
+          style={{ 
+            marginTop: '20px', 
+            width: '100%', 
+            backgroundColor: isAsleep ? '#ef4444' : '#1e293b' 
+          }}
+        >
+          {isAsleep ? 'Wake Up Tabs' : 'Enable Sleep Tabs'}
         </button>
       </div>
     </div>

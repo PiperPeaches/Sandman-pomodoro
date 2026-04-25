@@ -11,10 +11,14 @@ export default defineConfig({
         manifest_version: 3,
         name: 'Sandman Focus',
         version: '1.0',
-        permissions: ['storage', 'activeTab', 'scripting'],
+        permissions: ['storage', 'activeTab', 'scripting', 'notifications', 'tabs'],
         action: {
           default_popup: 'index.html',
           default_title: 'Sandman'
+        },
+        background: {
+          scripts: ['src/background/index.ts'],
+          type: 'module'
         },
         content_scripts: [
           {
