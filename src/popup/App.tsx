@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import "./App.css";
 
+/**
+ * Sandman Popup Application
+ * 
+ * Provides the user interface for controlling the timer, managing the
+ * site list, and toggling between Blacklist and Whitelist modes.
+ * Uses a local ticker to keep the UI live and in sync with the background.
+ */
+
 const driftPhrases: string[] = [
   "Time is drifting away...",
   "The sand falls softly...",
@@ -12,6 +20,8 @@ interface TimerState {
   timeLeft: number;
   isActive: boolean;
   blocklist: string[];
+  mode: 'blacklist' | 'whitelist';
+  endTime: number | null;
 }
 
 function App() {
@@ -22,20 +32,32 @@ function App() {
 
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [isActive, setIsActive] = useState(false);
+  const [endTime, setEndTime] = useState<number | null>(null);
   const [blocklist, setBlocklist] = useState<string[]>([]);
+  const [mode, setMode] = useState<'blacklist' | 'whitelist'>('blacklist');
   const [newSite, setNewSite] = useState("");
 
+  /**
+   * Initialize state from background script on mount.
+   */
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response: TimerState) => {
       if (response) {
         setTimeLeft(response.timeLeft);
         setIsActive(response.isActive);
         setBlocklist(response.blocklist || []);
+        setMode(response.mode || 'blacklist');
+        setEndTime(response.endTime || null);
       }
     });
 
     const listener = (message: any) => {
       if (message.type === 'TICK') {
+        setTimeLeft(message.timeLeft);
+      } else if (message.type === 'UPDATE_SLEEP') {
+        // Sync state when broadcast occurs
+        setIsActive(message.isActive);
+        setEndTime(message.endTime || null);
         setTimeLeft(message.timeLeft);
       }
     };
@@ -44,20 +66,55 @@ function App() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
+  /**
+   * Local Ticker: Updates the UI every second based on endTime
+   */
+  useEffect(() => {
+    if (!isActive || !endTime) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
+      setTimeLeft(remaining);
+
+      if (remaining === 0) {
+        setIsActive(false);
+        setEndTime(null);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isActive, endTime]);
+
   const toggleTimer = () => {
     if (isActive) {
       chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
       setIsActive(false);
+      setEndTime(null);
     } else {
-      chrome.runtime.sendMessage({ type: 'START_TIMER' });
+      // Optimistically start locally
+      const newEndTime = Date.now() + (timeLeft * 1000);
+      setEndTime(newEndTime);
       setIsActive(true);
+      chrome.runtime.sendMessage({ type: 'START_TIMER' });
     }
   };
   
   const resetTimer = () => {
     chrome.runtime.sendMessage({ type: 'RESET_TIMER' });
     setIsActive(false);
+    setEndTime(null);
     setTimeLeft(25 * 60);
+  };
+
+  /**
+   * Toggles between Blacklist (block listed) and Whitelist (allow listed).
+   */
+  const toggleMode = () => {
+    const newMode = mode === 'blacklist' ? 'whitelist' : 'blacklist';
+    chrome.runtime.sendMessage({ type: 'SET_MODE', mode: newMode }, (res) => {
+      if (res?.mode) setMode(res.mode);
+    });
   };
 
   const addSite = (e: React.FormEvent) => {
@@ -117,11 +174,17 @@ function App() {
       </div>
 
       <div className="blocklist-section">
-        <h4>Distractions</h4>
+        <div className="section-header">
+          <h4>{mode === 'blacklist' ? 'Distractions' : 'Allowed Sites'}</h4>
+          <button className="mode-toggle" onClick={toggleMode}>
+            {mode === 'blacklist' ? 'Blacklist' : 'Whitelist'}
+          </button>
+        </div>
+        
         <form onSubmit={addSite} className="add-site-form">
           <input 
             type="text" 
-            placeholder="e.g. youtube.com" 
+            placeholder={mode === 'blacklist' ? "Block a site..." : "Allow a site..."} 
             value={newSite}
             onChange={(e) => setNewSite(e.target.value)}
           />

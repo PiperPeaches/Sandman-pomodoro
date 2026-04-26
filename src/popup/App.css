@@ -94,12 +94,38 @@ button {
   flex-direction: column;
 }
 
-.blocklist-section h4 {
-  margin: 0 0 10px 0;
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section-header h4 {
+  margin: 0;
   font-size: 0.9rem;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.mode-toggle {
+  background: rgba(183, 95, 181, 0.1);
+  border: 1px solid rgba(183, 95, 181, 0.3);
+  color: #b75fb5;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mode-toggle:hover {
+  background: rgba(183, 95, 181, 0.2);
+  border-color: rgba(183, 95, 181, 0.5);
 }
 
 .add-site-form {

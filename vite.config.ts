@@ -11,7 +11,8 @@ export default defineConfig({
         manifest_version: 3,
         name: 'Sandman Focus',
         version: '1.0',
-        permissions: ['storage', 'activeTab', 'scripting', 'notifications', 'tabs'],
+        permissions: ['storage', 'activeTab', 'scripting', 'notifications', 'tabs', 'alarms'],
+        host_permissions: ['<all_urls>'],
         action: {
           default_popup: 'index.html',
           default_title: 'Sandman'
