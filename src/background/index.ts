@@ -16,6 +16,54 @@ let noBreaks = false;
 let username = 'Dreamer';
 let totalFocusTime = 0; // in seconds
 
+// Background Audio Reference (for non-offscreen environments like Firefox)
+let backgroundAudio: HTMLAudioElement | null = null;
+
+async function createOffscreen() {
+  if (typeof chrome.offscreen === 'undefined') return;
+  if (await chrome.offscreen.hasDocument()) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
+    justification: 'Playback of timer start/end sounds'
+  });
+}
+
+async function playAudio(url: string) {
+  if (typeof chrome.offscreen !== 'undefined') {
+    await createOffscreen();
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ type: 'PLAY_AUDIO', url }).catch(() => {});
+    }, 200);
+  } else {
+    // Firefox fallback: Play in background page
+    try {
+      if (backgroundAudio) {
+        backgroundAudio.pause();
+        backgroundAudio = null;
+      }
+      backgroundAudio = new Audio(url);
+      backgroundAudio.play().catch(() => {
+        console.warn("Autoplay blocked in background. Audio will play upon next interaction.");
+      });
+    } catch (e) {}
+  }
+}
+
+async function stopAudio() {
+  // Stop background audio (Firefox)
+  if (backgroundAudio) {
+    backgroundAudio.pause();
+    backgroundAudio.currentTime = 0;
+    backgroundAudio = null;
+  }
+
+  // Stop offscreen audio (Chrome)
+  if (typeof chrome.offscreen !== 'undefined' && await chrome.offscreen.hasDocument()) {
+    chrome.runtime.sendMessage({ type: 'STOP_AUDIO' }).catch(() => {});
+  }
+}
+
 const commonDistractions = [
   'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
   'instagram.com', 'reddit.com', 'netflix.com', 'twitch.tv', 'tiktok.com','news.google.com'
@@ -114,6 +162,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         endTime = Date.now() + (timeLeft * 1000);
         saveState(); startAlarm(); broadcastSleep();
         updatePresence(true);
+        playAudio(chrome.runtime.getURL('Audio/start.mp3'));
         sendResponse({ success: true, endTime });
         break;
       case 'PAUSE_TIMER':
@@ -122,7 +171,12 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           break;
         }
         pauseTimerInternal();
+        stopAudio();
         sendResponse({ success: true, timeLeft });
+        break;
+      case 'STOP_AUDIO':
+        stopAudio();
+        sendResponse({ success: true });
         break;
       case 'RESET_TIMER':
         if (noBreaks && isActive) {
@@ -132,6 +186,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         isActive = false; timeLeft = defaultTime; endTime = null;
         saveState(); stopAlarm(); broadcastSleep();
         updatePresence(false);
+        stopAudio();
         sendResponse({ success: true });
         break;
       case 'SET_MODE':
@@ -199,6 +254,8 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           updatePresence(false);
           syncProfileToSupabase();
           showCompletionNotification();
+          playAudio(chrome.runtime.getURL('Audio/end.mp3'));
+          broadcastSessionComplete();
         }
         sendResponse({ success: true });
         break;
@@ -388,26 +445,33 @@ function stopAlarm() {
   chrome.alarms.clear('sandman-heartbeat');
 }
 
+function checkTimer() {
+  if (isActive && endTime) {
+    const now = Date.now();
+    
+    if (now >= endTime - 500) { 
+      const sessionTime = defaultTime;
+      totalFocusTime += sessionTime;
+      isActive = false; endTime = null; timeLeft = defaultTime;
+      saveState(); stopAlarm(); broadcastSleep();
+      updatePresence(false);
+      syncProfileToSupabase();
+      showCompletionNotification();
+      playAudio(chrome.runtime.getURL('Audio/end.mp3'));
+      broadcastSessionComplete();
+    } else {
+      timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
+      saveState(); broadcastSleep();
+    }
+  }
+}
+
+setInterval(checkTimer, 1000);
+
 chrome.alarms.onAlarm.addListener(() => {
   ensureInit().then(() => {
     updatePresence(isActive);
-
-    if (isActive && endTime) {
-      const now = Date.now();
-      
-      if (now >= endTime - 500) { 
-        const sessionTime = defaultTime;
-        totalFocusTime += sessionTime;
-        isActive = false; endTime = null; timeLeft = defaultTime;
-        saveState(); stopAlarm(); broadcastSleep();
-        updatePresence(false);
-        syncProfileToSupabase();
-        showCompletionNotification();
-      } else {
-        timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
-        saveState(); broadcastSleep();
-      }
-    }
+    checkTimer();
   });
 });
 
@@ -469,10 +533,20 @@ function hasActiveBlocks(): boolean {
   return false;
 }
 
+function broadcastSessionComplete() {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'SESSION_COMPLETE' }).catch(() => {});
+      }
+    });
+  });
+}
+
 let lastBroadcastTime = 0;
 function broadcastSleep() {
   const now = Date.now();
-  const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - now) / 1000)) : timeLeft;
+  const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
   const stateUpdate = { 
     type: 'UPDATE_SLEEP', isActive, timeLeft: currentRemaining, endTime,
     mode, blocklist, settings: { 

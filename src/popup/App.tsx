@@ -236,6 +236,10 @@ function App() {
     chrome.runtime.sendMessage({ type: 'RESET_TIMER' });
   };
 
+  const stopAudio = () => {
+    chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
+  };
+
   const toggleMode = () => {
     if (isLocked) return;
     const newMode = mode === 'blacklist' ? 'whitelist' : 'blacklist';
@@ -309,13 +313,13 @@ function App() {
     chrome.runtime.sendMessage({ type: 'REMOVE_BLOCK', site });
   };
 
-  const formatTime = (seconds: number, padHours = false) => {
+  const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     
-    if (hrs > 0 || padHours) {
-      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (seconds >= 3600) {
+      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
@@ -352,7 +356,7 @@ function App() {
                   disabled={isLocked}
                 >
                   <FontAwesomeIcon icon={isActive ? faPause : faPlay} style={{ marginRight: '8px' }} />
-                  {isActive ? "Pause Focus" : "Start Session"}
+                  {isActive ? "Pause" : "Start"}
                 </button>
                 <button 
                   onClick={resetTimer} 
@@ -360,7 +364,14 @@ function App() {
                   disabled={isLocked}
                 >
                   <FontAwesomeIcon icon={faUndo} style={{ marginRight: '8px' }} />
-                  Reset Timer
+                  Reset
+                </button>
+                <button 
+                  onClick={stopAudio} 
+                  className="btn-pill btn-red"
+                  title="Stop Audio"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
                 </button>
               </div>
 

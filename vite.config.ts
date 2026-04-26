@@ -29,7 +29,7 @@ export default defineConfig({
         ],
         web_accessible_resources: [
           {
-            resources: ['auth.html'],
+            resources: ['auth.html', 'Audio/start.mp3', 'Audio/end.mp3', 'fonts/MontserratAlternates-SemiBold.ttf'],
             matches: ['<all_urls>']
           }
         ],
@@ -45,7 +45,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: 'index.html',
-        auth: 'auth.html'
+        auth: 'auth.html',
+        offscreen: 'offscreen.html'
       }
     }
   },
