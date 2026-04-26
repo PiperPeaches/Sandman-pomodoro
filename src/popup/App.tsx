@@ -3,10 +3,6 @@ import "./App.css";
 
 /**
  * Sandman Popup Application
- * 
- * Provides the user interface for controlling the timer, managing the
- * site list, and toggling between Blacklist and Whitelist modes.
- * Uses a local ticker to keep the UI live and in sync with the background.
  */
 
 const driftPhrases: string[] = [
@@ -22,6 +18,11 @@ interface TimerState {
   blocklist: string[];
   mode: 'blacklist' | 'whitelist';
   endTime: number | null;
+  settings?: {
+    blockAI: boolean;
+    blockCommon: boolean;
+    strictSubdomains: boolean;
+  };
 }
 
 function App() {
@@ -37,9 +38,10 @@ function App() {
   const [mode, setMode] = useState<'blacklist' | 'whitelist'>('blacklist');
   const [newSite, setNewSite] = useState("");
 
-  /**
-   * Initialize state from background script on mount.
-   */
+  const [blockAI, setBlockAI] = useState(false);
+  const [blockCommon, setBlockCommon] = useState(true);
+  const [strictSubdomains, setStrictSubdomains] = useState(false);
+
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response: TimerState) => {
       if (response) {
@@ -48,17 +50,40 @@ function App() {
         setBlocklist(response.blocklist || []);
         setMode(response.mode || 'blacklist');
         setEndTime(response.endTime || null);
+        if (response.settings) {
+          setBlockAI(response.settings.blockAI);
+          setBlockCommon(response.settings.blockCommon);
+          setStrictSubdomains(response.settings.strictSubdomains);
+        }
       }
     });
 
-    const listener = (message: any) => {
-      if (message.type === 'TICK') {
+    const listener = (message: { 
+      type: string; 
+      timeLeft?: number; 
+      isActive: boolean; 
+      endTime: number | null; 
+      mode: 'blacklist' | 'whitelist'; 
+      blocklist: string[]; 
+      settings: {
+        blockAI: boolean;
+        blockCommon: boolean;
+        strictSubdomains: boolean;
+      }
+    }) => {
+      if (message.type === 'TICK' && message.timeLeft !== undefined) {
         setTimeLeft(message.timeLeft);
       } else if (message.type === 'UPDATE_SLEEP') {
-        // Sync state when broadcast occurs
         setIsActive(message.isActive);
         setEndTime(message.endTime || null);
-        setTimeLeft(message.timeLeft);
+        if (message.timeLeft !== undefined) setTimeLeft(message.timeLeft);
+        setMode(message.mode || 'blacklist');
+        if (message.blocklist) setBlocklist(message.blocklist);
+        if (message.settings) {
+          setBlockAI(message.settings.blockAI);
+          setBlockCommon(message.settings.blockCommon);
+          setStrictSubdomains(message.settings.strictSubdomains);
+        }
       }
     };
 
@@ -66,33 +91,27 @@ function App() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
-  /**
-   * Local Ticker: Updates the UI every second based on endTime
-   */
   useEffect(() => {
     if (!isActive || !endTime) return;
-
     const interval = setInterval(() => {
       const now = Date.now();
       const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
       setTimeLeft(remaining);
-
-      if (remaining === 0) {
+      if (remaining <= 0) {
         setIsActive(false);
         setEndTime(null);
+        setTimeLeft(0);
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isActive, endTime]);
 
   const toggleTimer = () => {
     if (isActive) {
-      chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
       setIsActive(false);
       setEndTime(null);
+      chrome.runtime.sendMessage({ type: 'PAUSE_TIMER' });
     } else {
-      // Optimistically start locally
       const newEndTime = Date.now() + (timeLeft * 1000);
       setEndTime(newEndTime);
       setIsActive(true);
@@ -101,36 +120,56 @@ function App() {
   };
   
   const resetTimer = () => {
-    chrome.runtime.sendMessage({ type: 'RESET_TIMER' });
     setIsActive(false);
     setEndTime(null);
     setTimeLeft(25 * 60);
+    chrome.runtime.sendMessage({ type: 'RESET_TIMER' });
   };
 
-  /**
-   * Toggles between Blacklist (block listed) and Whitelist (allow listed).
-   */
   const toggleMode = () => {
     const newMode = mode === 'blacklist' ? 'whitelist' : 'blacklist';
-    chrome.runtime.sendMessage({ type: 'SET_MODE', mode: newMode }, (res) => {
-      if (res?.mode) setMode(res.mode);
+    setMode(newMode); // Optimistic UI
+    chrome.runtime.sendMessage({ type: 'SET_MODE', mode: newMode });
+  };
+
+  const updateSetting = (key: string, value: boolean) => {
+    // Optimistic UI updates
+    if (key === 'blockAI') setBlockAI(value);
+    if (key === 'blockCommon') setBlockCommon(value);
+    if (key === 'strictSubdomains') setStrictSubdomains(value);
+
+    chrome.runtime.sendMessage({ 
+      type: 'UPDATE_SETTINGS', 
+      settings: { [key]: value } 
     });
   };
 
   const addSite = (e: React.FormEvent) => {
     e.preventDefault();
     if (newSite.trim()) {
-      chrome.runtime.sendMessage({ type: 'ADD_BLOCK', site: newSite.trim().toLowerCase() }, (res) => {
-        if (res?.blocklist) setBlocklist(res.blocklist);
-        setNewSite("");
-      });
+      let site = newSite.trim().toLowerCase();
+      try {
+        if (site.includes('://')) {
+          site = new URL(site).hostname;
+        } else if (site.includes('/')) {
+          site = site.split('/')[0];
+        }
+      } catch (err) {
+        // use as is
+      }
+      site = site.replace(/^www\./, '');
+      
+      if (site && !blocklist.includes(site)) {
+        setBlocklist(prev => [...prev, site]); // Optimistic
+        chrome.runtime.sendMessage({ type: 'ADD_BLOCK', site });
+      }
+      setNewSite("");
     }
   };
 
   const removeSite = (site: string) => {
-    chrome.runtime.sendMessage({ type: 'REMOVE_BLOCK', site }, (res) => {
-      if (res?.blocklist) setBlocklist(res.blocklist);
-    });
+    setBlocklist(prev => prev.filter(s => s !== site)); // Optimistic
+    chrome.runtime.sendMessage({ type: 'REMOVE_BLOCK', site });
   };
 
   const formatTime = (seconds: number) => {
@@ -170,6 +209,39 @@ function App() {
             {isActive ? "Pause" : "Start"}
           </button>
           <button onClick={resetTimer} className="reset-btn">Reset</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <div className="setting-item">
+          <label>
+            <input 
+              type="checkbox" 
+              checked={blockAI} 
+              onChange={(e) => updateSetting('blockAI', e.target.checked)} 
+            />
+            No AI
+          </label>
+        </div>
+        <div className="setting-item">
+          <label>
+            <input 
+              type="checkbox" 
+              checked={blockCommon} 
+              onChange={(e) => updateSetting('blockCommon', e.target.checked)} 
+            />
+            Common Distractions
+          </label>
+        </div>
+        <div className="setting-item">
+          <label title="If on, blocks site.com and sub.site.com separately. If off, blocking site.com blocks all subdomains.">
+            <input 
+              type="checkbox" 
+              checked={strictSubdomains} 
+              onChange={(e) => updateSetting('strictSubdomains', e.target.checked)} 
+            />
+            Strict Subdomains
+          </label>
         </div>
       </div>
 
