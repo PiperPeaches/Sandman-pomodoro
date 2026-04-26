@@ -106,6 +106,12 @@ html, body {
   border-radius: 26px;
   padding: 16px;
   overflow: hidden;
+  transition: opacity 0.3s ease;
+}
+
+.card-disabled {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .card-title {
@@ -130,6 +136,11 @@ html, body {
 
 .setting-list-item:last-child {
   border-bottom: none;
+}
+
+.disabled-item {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .setting-info {
@@ -196,6 +207,36 @@ html, body {
   transform: translateX(20px);
 }
 
+/* Time Input Styling */
+.time-input {
+  width: 60px;
+  background: #2C2C2E;
+  border: none;
+  border-radius: 10px;
+  color: #3E91FF;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 4px;
+  font-family: inherit;
+}
+
+.time-input:focus {
+  outline: 1px solid #3E91FF;
+}
+
+/* Remove spin buttons for Chrome, Safari, Edge, Opera */
+.time-input::-webkit-outer-spin-button,
+.time-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Remove spin buttons for Firefox */
+.time-input[type=number] {
+  -moz-appearance: textfield;
+}
+
 /* One UI Primary Button */
 .main-action-area {
   display: flex;
@@ -207,7 +248,7 @@ html, body {
   width: 100%;
   padding: 16px;
   border: none;
-  border-radius: 22px; /* Slight squircle feel for buttons too */
+  border-radius: 22px;
   font-family: inherit;
   font-weight: 600;
   font-size: 1rem;
@@ -226,7 +267,12 @@ html, body {
   color: #FFFFFF;
 }
 
-.btn-pill:active {
+.disabled-btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-pill:active:not(:disabled) {
   opacity: 0.7;
 }
 

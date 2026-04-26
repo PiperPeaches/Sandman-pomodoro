@@ -1,4 +1,5 @@
 let timeLeft = 25 * 60; 
+let defaultTime = 25 * 60;
 let endTime: number | null = null; 
 let isActive = false;
 let mode: 'blacklist' | 'whitelist' = 'blacklist';
@@ -9,6 +10,7 @@ let blockAI = false;
 let blockCommon = true;
 let strictSubdomains = false;
 let blockYouTube = false;
+let noBreaks = false;
 
 const commonDistractions = [
   'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
@@ -28,10 +30,12 @@ let isInitialized = false;
 const initPromise = new Promise<void>((resolve) => {
   chrome.storage.local.get([
     'blocklist', 'mode', 'timeLeft', 'isActive', 'endTime', 
-    'blockAI', 'blockCommon', 'strictSubdomains', 'blockYouTube'
+    'blockAI', 'blockCommon', 'strictSubdomains', 'blockYouTube',
+    'noBreaks', 'defaultTime'
   ], (result) => {
     if (Array.isArray(result.blocklist)) blocklist = result.blocklist;
     if (result.mode === 'blacklist' || result.mode === 'whitelist') mode = result.mode;
+    if (typeof result.defaultTime === 'number') defaultTime = result.defaultTime;
     if (typeof result.timeLeft === 'number') timeLeft = result.timeLeft;
     if (typeof result.isActive === 'boolean') isActive = result.isActive;
     if (typeof result.endTime === 'number') endTime = result.endTime;
@@ -39,6 +43,7 @@ const initPromise = new Promise<void>((resolve) => {
     if (typeof result.blockCommon === 'boolean') blockCommon = result.blockCommon;
     if (typeof result.strictSubdomains === 'boolean') strictSubdomains = result.strictSubdomains;
     if (typeof result.blockYouTube === 'boolean') blockYouTube = result.blockYouTube;
+    if (typeof result.noBreaks === 'boolean') noBreaks = result.noBreaks;
 
     if (isActive && endTime) {
       const now = Date.now();
@@ -46,7 +51,7 @@ const initPromise = new Promise<void>((resolve) => {
         timeLeft = Math.ceil((endTime - now) / 1000);
         startAlarm();
       } else {
-        isActive = false; endTime = null; timeLeft = 25 * 60;
+        isActive = false; endTime = null; timeLeft = defaultTime;
         saveState();
       }
     }
@@ -71,6 +76,8 @@ interface TimerMessage {
     blockCommon?: boolean;
     strictSubdomains?: boolean;
     blockYouTube?: boolean;
+    noBreaks?: boolean;
+    defaultTime?: number;
   };
 }
 
@@ -81,7 +88,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
         sendResponse({ 
           timeLeft: currentRemaining, isActive, blocklist, mode, endTime,
-          settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
+          settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
         });
         break;
       }
@@ -92,32 +99,60 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         sendResponse({ success: true, endTime });
         break;
       case 'PAUSE_TIMER':
+        if (noBreaks && isActive) {
+          sendResponse({ success: false, error: 'No Breaks mode is active' });
+          break;
+        }
         if (isActive && endTime) timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
         isActive = false; endTime = null;
         saveState(); stopAlarm(); broadcastSleep();
         sendResponse({ success: true, timeLeft });
         break;
       case 'RESET_TIMER':
-        isActive = false; timeLeft = 25 * 60; endTime = null;
+        if (noBreaks && isActive) {
+          sendResponse({ success: false, error: 'No Breaks mode is active' });
+          break;
+        }
+        isActive = false; timeLeft = defaultTime; endTime = null;
         saveState(); stopAlarm(); broadcastSleep();
         sendResponse({ success: true });
         break;
       case 'SET_MODE':
+        if (noBreaks && isActive) {
+          sendResponse({ success: false, error: 'No Breaks mode is active' });
+          break;
+        }
         if (message.mode) { mode = message.mode; saveState(); broadcastSleep(); }
         sendResponse({ mode });
         break;
       case 'UPDATE_SETTINGS':
         if (message.settings) {
+          // If noBreaks is on and timer is running, block all setting changes except maybe noBreaks itself?
+          // Usually "lock in" means you can't even turn it off.
+          if (noBreaks && isActive) {
+             sendResponse({ success: false, error: 'No Breaks mode is active' });
+             break;
+          }
+
           if (message.settings.blockAI !== undefined) blockAI = message.settings.blockAI;
           if (message.settings.blockCommon !== undefined) blockCommon = message.settings.blockCommon;
           if (message.settings.strictSubdomains !== undefined) strictSubdomains = message.settings.strictSubdomains;
           if (message.settings.blockYouTube !== undefined) blockYouTube = message.settings.blockYouTube;
+          if (message.settings.noBreaks !== undefined) noBreaks = message.settings.noBreaks;
+          if (message.settings.defaultTime !== undefined) {
+             defaultTime = message.settings.defaultTime;
+             if (!isActive) timeLeft = defaultTime;
+          }
           saveState(); 
           broadcastSleep();
         }
         sendResponse({ success: true });
         break;
       case 'ADD_BLOCK':
+        if (noBreaks && isActive) {
+          sendResponse({ success: false, error: 'No Breaks mode is active' });
+          break;
+        }
         if (message.site) {
           const normalized = normalizeSite(message.site);
           if (normalized && !blocklist.includes(normalized)) {
@@ -127,6 +162,10 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         sendResponse({ blocklist });
         break;
       case 'REMOVE_BLOCK':
+        if (noBreaks && isActive) {
+          sendResponse({ success: false, error: 'No Breaks mode is active' });
+          break;
+        }
         if (message.site) {
           blocklist = blocklist.filter(s => s !== message.site); saveState(); broadcastSleep();
         }
@@ -134,7 +173,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         break;
       case 'FINISH_TIMER':
         if (isActive) {
-          isActive = false; endTime = null; timeLeft = 0;
+          isActive = false; endTime = null; timeLeft = defaultTime;
           saveState(); stopAlarm(); broadcastSleep();
           showCompletionNotification();
         }
@@ -162,7 +201,8 @@ function normalizeSite(site: string): string {
 function saveState() {
   chrome.storage.local.set({ 
     blocklist, mode, timeLeft, isActive, endTime,
-    blockAI, blockCommon, strictSubdomains, blockYouTube
+    blockAI, blockCommon, strictSubdomains, blockYouTube,
+    noBreaks, defaultTime
   });
 }
 
@@ -179,7 +219,7 @@ chrome.alarms.onAlarm.addListener(() => {
     if (isActive && endTime) {
       const now = Date.now();
       if (now >= endTime - 500) { // Buffer to account for timer precision
-        isActive = false; endTime = null; timeLeft = 0;
+        isActive = false; endTime = null; timeLeft = defaultTime;
         saveState(); stopAlarm(); broadcastSleep();
         showCompletionNotification();
       } else {
@@ -204,7 +244,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
       chrome.tabs.sendMessage(tabId, { 
         type: 'UPDATE_SLEEP', isAsleep: isDistracting, isActive, timeLeft: currentRemaining,
-        endTime, blocklist, mode, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
+        endTime, blocklist, mode, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
       }).catch(() => {});
     });
   }
@@ -242,7 +282,7 @@ function broadcastSleep() {
   const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - now) / 1000)) : timeLeft;
   const stateUpdate = { 
     type: 'UPDATE_SLEEP', isActive, timeLeft: currentRemaining, endTime,
-    mode, blocklist, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
+    mode, blocklist, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
   };
 
   // Only broadcast if something changed or it's been a while (reduce jitter)
