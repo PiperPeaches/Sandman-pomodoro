@@ -8,15 +8,16 @@ let blocklist: string[] = [];
 let blockAI = false;
 let blockCommon = true;
 let strictSubdomains = false;
+let blockYouTube = false;
 
 const commonDistractions = [
   'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
-  'instagram.com', 'reddit.com', 'netflix.com', 'twitch.tv', 'tiktok.com'
+  'instagram.com', 'reddit.com', 'netflix.com', 'twitch.tv', 'tiktok.com','news.google.com'
 ];
 
 const aiSites = [
   'chatgpt.com', 'openai.com', 'claude.ai', 'gemini.google.com', 
-  'perplexity.ai', 'deepseek.com', 'mistral.ai', 'anthropic.com'
+  'perplexity.ai', 'deepseek.com', 'mistral.ai', 'anthropic.com','kimi.com','ai.hackclub.com'
 ];
 
 /**
@@ -27,7 +28,7 @@ let isInitialized = false;
 const initPromise = new Promise<void>((resolve) => {
   chrome.storage.local.get([
     'blocklist', 'mode', 'timeLeft', 'isActive', 'endTime', 
-    'blockAI', 'blockCommon', 'strictSubdomains'
+    'blockAI', 'blockCommon', 'strictSubdomains', 'blockYouTube'
   ], (result) => {
     if (Array.isArray(result.blocklist)) blocklist = result.blocklist;
     if (result.mode === 'blacklist' || result.mode === 'whitelist') mode = result.mode;
@@ -37,6 +38,7 @@ const initPromise = new Promise<void>((resolve) => {
     if (typeof result.blockAI === 'boolean') blockAI = result.blockAI;
     if (typeof result.blockCommon === 'boolean') blockCommon = result.blockCommon;
     if (typeof result.strictSubdomains === 'boolean') strictSubdomains = result.strictSubdomains;
+    if (typeof result.blockYouTube === 'boolean') blockYouTube = result.blockYouTube;
 
     if (isActive && endTime) {
       const now = Date.now();
@@ -68,6 +70,7 @@ interface TimerMessage {
     blockAI?: boolean;
     blockCommon?: boolean;
     strictSubdomains?: boolean;
+    blockYouTube?: boolean;
   };
 }
 
@@ -78,7 +81,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
         sendResponse({ 
           timeLeft: currentRemaining, isActive, blocklist, mode, endTime,
-          settings: { blockAI, blockCommon, strictSubdomains }
+          settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
         });
         break;
       }
@@ -108,6 +111,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           if (message.settings.blockAI !== undefined) blockAI = message.settings.blockAI;
           if (message.settings.blockCommon !== undefined) blockCommon = message.settings.blockCommon;
           if (message.settings.strictSubdomains !== undefined) strictSubdomains = message.settings.strictSubdomains;
+          if (message.settings.blockYouTube !== undefined) blockYouTube = message.settings.blockYouTube;
           saveState(); 
           broadcastSleep();
         }
@@ -127,6 +131,14 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           blocklist = blocklist.filter(s => s !== message.site); saveState(); broadcastSleep();
         }
         sendResponse({ blocklist });
+        break;
+      case 'FINISH_TIMER':
+        if (isActive) {
+          isActive = false; endTime = null; timeLeft = 0;
+          saveState(); stopAlarm(); broadcastSleep();
+          showCompletionNotification();
+        }
+        sendResponse({ success: true });
         break;
     }
   });
@@ -150,7 +162,7 @@ function normalizeSite(site: string): string {
 function saveState() {
   chrome.storage.local.set({ 
     blocklist, mode, timeLeft, isActive, endTime,
-    blockAI, blockCommon, strictSubdomains
+    blockAI, blockCommon, strictSubdomains, blockYouTube
   });
 }
 
@@ -166,13 +178,13 @@ chrome.alarms.onAlarm.addListener(() => {
   ensureInit().then(() => {
     if (isActive && endTime) {
       const now = Date.now();
-      const remaining = Math.max(0, Math.ceil((endTime - now) / 1000));
-      if (remaining <= 0) {
+      if (now >= endTime - 500) { // Buffer to account for timer precision
         isActive = false; endTime = null; timeLeft = 0;
         saveState(); stopAlarm(); broadcastSleep();
         showCompletionNotification();
       } else {
-        timeLeft = remaining; saveState(); broadcastSleep();
+        timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
+        saveState(); broadcastSleep();
       }
     }
   });
@@ -192,7 +204,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
       chrome.tabs.sendMessage(tabId, { 
         type: 'UPDATE_SLEEP', isAsleep: isDistracting, isActive, timeLeft: currentRemaining,
-        endTime, blocklist, mode, settings: { blockAI, blockCommon, strictSubdomains }
+        endTime, blocklist, mode, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
       }).catch(() => {});
     });
   }
@@ -230,7 +242,7 @@ function broadcastSleep() {
   const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - now) / 1000)) : timeLeft;
   const stateUpdate = { 
     type: 'UPDATE_SLEEP', isActive, timeLeft: currentRemaining, endTime,
-    mode, blocklist, settings: { blockAI, blockCommon, strictSubdomains }
+    mode, blocklist, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube }
   };
 
   // Only broadcast if something changed or it's been a while (reduce jitter)

@@ -1,8 +1,25 @@
 import { useState, useEffect } from "react";
 import "./App.css";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faYoutube 
+} from '@fortawesome/free-brands-svg-icons';
+import { 
+  faRobot, 
+  faChartLine, 
+  faLock, 
+  faMoon, 
+  faPlay, 
+  faPause, 
+  faUndo, 
+  faPlus, 
+  faTimes,
+  faShieldHalved,
+  faStar
+} from '@fortawesome/free-solid-svg-icons';
 
 /**
- * Sandman Popup Application
+ * Sandman Popup Application - Samsung One UI Style with Squarkles
  */
 
 const driftPhrases: string[] = [
@@ -10,6 +27,21 @@ const driftPhrases: string[] = [
   "The sand falls softly...",
   "Moments lost in sleep...",
   "Fading into the mist...",
+  "Quiet your mind, sharpen your soul...",
+  "The dream world is calling, but focus remains...",
+  "Let the world fade into the background...",
+  "One grain of sand at a time...",
+  "Floating in the sea of deep work...",
+  "The stars are aligning for your productivity...",
+  "Embrace the silence of the mist...",
+  "A dream within a focus session...",
+  "Soft echoes of a distant goal...",
+  "Wrapped in a blanket of stillness...",
+  "The mist clears only for your progress...",
+  "Drifting through the ocean of thought...",
+  "Your journey through the sand begins...",
+  "Wait for the sand to settle...",
+  "Focus is the bridge to your dreams...",
 ];
 
 interface TimerState {
@@ -22,6 +54,7 @@ interface TimerState {
     blockAI: boolean;
     blockCommon: boolean;
     strictSubdomains: boolean;
+    blockYouTube: boolean;
   };
 }
 
@@ -41,6 +74,7 @@ function App() {
   const [blockAI, setBlockAI] = useState(false);
   const [blockCommon, setBlockCommon] = useState(true);
   const [strictSubdomains, setStrictSubdomains] = useState(false);
+  const [blockYouTube, setBlockYouTube] = useState(false);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'GET_STATE' }, (response: TimerState) => {
@@ -51,26 +85,15 @@ function App() {
         setMode(response.mode || 'blacklist');
         setEndTime(response.endTime || null);
         if (response.settings) {
-          setBlockAI(response.settings.blockAI);
-          setBlockCommon(response.settings.blockCommon);
-          setStrictSubdomains(response.settings.strictSubdomains);
+          setBlockAI(!!response.settings.blockAI);
+          setBlockCommon(!!response.settings.blockCommon);
+          setStrictSubdomains(!!response.settings.strictSubdomains);
+          setBlockYouTube(!!response.settings.blockYouTube);
         }
       }
     });
 
-    const listener = (message: { 
-      type: string; 
-      timeLeft?: number; 
-      isActive: boolean; 
-      endTime: number | null; 
-      mode: 'blacklist' | 'whitelist'; 
-      blocklist: string[]; 
-      settings: {
-        blockAI: boolean;
-        blockCommon: boolean;
-        strictSubdomains: boolean;
-      }
-    }) => {
+    const listener = (message: any) => {
       if (message.type === 'TICK' && message.timeLeft !== undefined) {
         setTimeLeft(message.timeLeft);
       } else if (message.type === 'UPDATE_SLEEP') {
@@ -80,9 +103,10 @@ function App() {
         setMode(message.mode || 'blacklist');
         if (message.blocklist) setBlocklist(message.blocklist);
         if (message.settings) {
-          setBlockAI(message.settings.blockAI);
-          setBlockCommon(message.settings.blockCommon);
-          setStrictSubdomains(message.settings.strictSubdomains);
+          setBlockAI(!!message.settings.blockAI);
+          setBlockCommon(!!message.settings.blockCommon);
+          setStrictSubdomains(!!message.settings.strictSubdomains);
+          setBlockYouTube(!!message.settings.blockYouTube);
         }
       }
     };
@@ -128,15 +152,15 @@ function App() {
 
   const toggleMode = () => {
     const newMode = mode === 'blacklist' ? 'whitelist' : 'blacklist';
-    setMode(newMode); // Optimistic UI
+    setMode(newMode);
     chrome.runtime.sendMessage({ type: 'SET_MODE', mode: newMode });
   };
 
   const updateSetting = (key: string, value: boolean) => {
-    // Optimistic UI updates
     if (key === 'blockAI') setBlockAI(value);
     if (key === 'blockCommon') setBlockCommon(value);
     if (key === 'strictSubdomains') setStrictSubdomains(value);
+    if (key === 'blockYouTube') setBlockYouTube(value);
 
     chrome.runtime.sendMessage({ 
       type: 'UPDATE_SETTINGS', 
@@ -154,13 +178,11 @@ function App() {
         } else if (site.includes('/')) {
           site = site.split('/')[0];
         }
-      } catch (err) {
-        // use as is
-      }
+      } catch (err) {}
       site = site.replace(/^www\./, '');
       
       if (site && !blocklist.includes(site)) {
-        setBlocklist(prev => [...prev, site]); // Optimistic
+        setBlocklist(prev => [...prev, site]);
         chrome.runtime.sendMessage({ type: 'ADD_BLOCK', site });
       }
       setNewSite("");
@@ -168,7 +190,7 @@ function App() {
   };
 
   const removeSite = (site: string) => {
-    setBlocklist(prev => prev.filter(s => s !== site)); // Optimistic
+    setBlocklist(prev => prev.filter(s => s !== site));
     chrome.runtime.sendMessage({ type: 'REMOVE_BLOCK', site });
   };
 
@@ -178,98 +200,121 @@ function App() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const totalSeconds = 25 * 60;
-  const circumference = 2 * Math.PI * 90;
-  const offset = circumference - (timeLeft / totalSeconds) * circumference;
+  const SettingItem = ({ label, icon, value, onToggle }: { label: string, icon: any, value: boolean, onToggle: () => void }) => (
+    <div className="setting-list-item" onClick={onToggle}>
+      <div className="setting-info">
+        <div className={`icon-squircle ${value ? 'icon-squircle-active' : ''}`}>
+          <FontAwesomeIcon icon={icon} fixedWidth />
+        </div>
+        <span className="setting-label">{label}</span>
+      </div>
+      <div className={`toggle ${value ? 'toggle-active' : ''}`} />
+    </div>
+  );
 
   return (
     <div className="container">
-      <div className="main-view">
-        <h1 className="title">The Sandman</h1>
-        <h3 className="phrase">{displayPhrase}</h3>
+      {/* Viewing Area with Squarkles */}
+      <div className="viewing-area">
+        <div className="squarkle-container">
+          <FontAwesomeIcon icon={faStar} className="squarkle sq-1" />
+          <FontAwesomeIcon icon={faStar} className="squarkle sq-2" />
+          <FontAwesomeIcon icon={faStar} className="squarkle sq-3" />
+        </div>
+        <h1 className="header-title">The Sandman</h1>
+        <div className="timer-display">
+          {formatTime(timeLeft)}
+        </div>
+        <div className="phrase-display">
+          {displayPhrase}
+        </div>
+      </div>
+
+      {/* Interaction Area */}
+      <div className="interaction-area">
         
-        <div className="timer-container">
-          <svg width="210" height="210" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="105" cy="105" r="90" fill="transparent" stroke="#1e293b" strokeWidth="8" />
-            <circle
-              className="progress-ring"
-              cx="105" cy="105" r="90" fill="transparent" stroke="#b75fb5" strokeWidth="8"
-              strokeDasharray={circumference}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="timer-text">
-            <h2>{formatTime(timeLeft)}</h2>
+        {/* Main Actions Card */}
+        <div className="main-action-area">
+          <button onClick={toggleTimer} className={`btn-pill btn-blue`}>
+            <FontAwesomeIcon icon={isActive ? faPause : faPlay} style={{ marginRight: '8px' }} />
+            {isActive ? "Pause Focus" : "Start Focus Session"}
+          </button>
+          <button onClick={resetTimer} className="btn-pill btn-gray">
+            <FontAwesomeIcon icon={faUndo} style={{ marginRight: '8px' }} />
+            Reset Timer
+          </button>
+        </div>
+
+        {/* Mode Card */}
+        <div className="card">
+          <h3 className="card-title">Filter Mode</h3>
+          <div className="setting-list-item" onClick={toggleMode}>
+            <div className="setting-info">
+              <div className="icon-squircle icon-squircle-active">
+                <FontAwesomeIcon icon={faMoon} fixedWidth />
+              </div>
+              <span className="setting-label">{mode === 'blacklist' ? 'Distractions' : 'Allowed Only'}</span>
+            </div>
+            <span style={{ color: '#3E91FF', fontWeight: '600', fontSize: '0.85rem' }}>CHANGE</span>
           </div>
         </div>
 
-        <div className={`controls-wrapper ${isActive ? 'is-active' : ''}`}>
-          <button onClick={toggleTimer} className="main-btn">
-            {isActive ? "Pause" : "Start"}
-          </button>
-          <button onClick={resetTimer} className="reset-btn">Reset</button>
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <div className="setting-item">
-          <label>
-            <input 
-              type="checkbox" 
-              checked={blockAI} 
-              onChange={(e) => updateSetting('blockAI', e.target.checked)} 
-            />
-            No AI
-          </label>
-        </div>
-        <div className="setting-item">
-          <label>
-            <input 
-              type="checkbox" 
-              checked={blockCommon} 
-              onChange={(e) => updateSetting('blockCommon', e.target.checked)} 
-            />
-            Common Distractions
-          </label>
-        </div>
-        <div className="setting-item">
-          <label title="If on, blocks site.com and sub.site.com separately. If off, blocking site.com blocks all subdomains.">
-            <input 
-              type="checkbox" 
-              checked={strictSubdomains} 
-              onChange={(e) => updateSetting('strictSubdomains', e.target.checked)} 
-            />
-            Strict Subdomains
-          </label>
-        </div>
-      </div>
-
-      <div className="blocklist-section">
-        <div className="section-header">
-          <h4>{mode === 'blacklist' ? 'Distractions' : 'Allowed Sites'}</h4>
-          <button className="mode-toggle" onClick={toggleMode}>
-            {mode === 'blacklist' ? 'Blacklist' : 'Whitelist'}
-          </button>
-        </div>
-        
-        <form onSubmit={addSite} className="add-site-form">
-          <input 
-            type="text" 
-            placeholder={mode === 'blacklist' ? "Block a site..." : "Allow a site..."} 
-            value={newSite}
-            onChange={(e) => setNewSite(e.target.value)}
+        {/* Settings Card */}
+        <div className="card">
+          <h3 className="card-title">Preferences</h3>
+          <SettingItem 
+            label="Block all YouTube" 
+            icon={faYoutube} 
+            value={blockYouTube} 
+            onToggle={() => updateSetting('blockYouTube', !blockYouTube)} 
           />
-          <button type="submit">+</button>
-        </form>
-        <div className="site-list">
-          {blocklist.map(site => (
-            <div key={site} className="site-item">
-              <span>{site}</span>
-              <button onClick={() => removeSite(site)}>&times;</button>
-            </div>
-          ))}
+          <SettingItem 
+            label="No AI Assistants" 
+            icon={faRobot} 
+            value={blockAI} 
+            onToggle={() => updateSetting('blockAI', !blockAI)} 
+          />
+          <SettingItem 
+            label="Common Distractions" 
+            icon={faChartLine} 
+            value={blockCommon} 
+            onToggle={() => updateSetting('blockCommon', !blockCommon)} 
+          />
+          <SettingItem 
+            label="Strict Subdomains" 
+            icon={faLock} 
+            value={strictSubdomains} 
+            onToggle={() => updateSetting('strictSubdomains', !strictSubdomains)} 
+          />
         </div>
+
+        {/* Blocklist Card */}
+        <div className="card blocklist-card">
+          <div className="blocklist-header">
+            <h4><FontAwesomeIcon icon={faShieldHalved} style={{ marginRight: '8px', opacity: 0.7 }} />{mode === 'blacklist' ? 'Blocklist' : 'Whitelist'}</h4>
+            <span style={{ fontSize: '0.85rem', color: '#8E8E93' }}>{blocklist.length} sites</span>
+          </div>
+          
+          <form onSubmit={addSite} className="add-input-row">
+            <input 
+              type="text" 
+              placeholder="Add a website..." 
+              value={newSite}
+              onChange={(e) => setNewSite(e.target.value)}
+            />
+            <button type="submit"><FontAwesomeIcon icon={faPlus} /></button>
+          </form>
+
+          <div className="site-list">
+            {blocklist.map(site => (
+              <div key={site} className="site-item">
+                <span>{site}</span>
+                <button onClick={() => removeSite(site)}><FontAwesomeIcon icon={faTimes} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );

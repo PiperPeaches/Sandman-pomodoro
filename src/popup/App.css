@@ -6,14 +6,15 @@
 }
 
 :root {
-  font-family: 'MontserratAlternates', system-ui, sans-serif;
+  font-family: 'MontserratAlternates', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  background-color: #0f172a;
+  background-color: #000000;
   width: 350px;
+  min-height: 550px;
   max-height: 600px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -23,190 +24,289 @@ html, body {
 .container {
   width: 100%;
   min-height: 100%;
-  padding: 24px;
+  padding: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
 }
 
-.main-view {
-  text-align: center;
-}
-
-.title {
-  margin: 0;
-  font-size: 1.5rem;
-  letter-spacing: -0.02em;
-}
-
-.phrase {
-  margin: 8px 0 0 0;
-  font-weight: normal;
-  color: #94a3b8;
-  font-size: 0.9rem;
-}
-
-.timer-container {
-  position: relative;
-  width: 210px; /* Increased to fit the ring + stroke + glow */
-  height: 210px;
-  margin: 10px auto;
+/* One UI Viewing Area (Top) */
+.viewing-area {
+  padding: 40px 24px 24px 24px;
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  position: relative;
+  overflow: hidden;
 }
 
-.progress-ring {
-  transition: stroke-dashoffset 0.8s linear;
-}
-
-.timer-text h2 {
+/* Squarkles (Animated Sparkles) */
+.squarkle-container {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  right: 0;
+  width: 150px;
+  height: 100%;
+  pointer-events: none;
+}
+
+.squarkle {
+  position: absolute;
+  color: #3E91FF;
+  opacity: 0;
+  font-size: 0.8rem;
+  filter: drop-shadow(0 0 5px #3E91FF);
+  animation: squarkle-float 4s infinite linear;
+}
+
+.sq-1 { top: 20%; right: 20%; animation-delay: 0s; font-size: 1rem; }
+.sq-2 { top: 40%; right: 40%; animation-delay: 1.5s; font-size: 0.6rem; }
+.sq-3 { top: 60%; right: 15%; animation-delay: 2.8s; font-size: 0.9rem; }
+
+@keyframes squarkle-float {
+  0% { transform: translateY(20px) scale(0); opacity: 0; }
+  50% { opacity: 0.6; transform: translateY(0px) scale(1.2) rotate(45deg); }
+  100% { transform: translateY(-20px) scale(0); opacity: 0; }
+}
+
+.header-title {
+  font-size: 2.2rem;
+  font-weight: 400;
   margin: 0;
-  font-size: 2.5rem;
+  color: #FFFFFF;
+}
+
+.timer-display {
+  margin-top: 8px;
+  font-size: 3.5rem;
+  color: #FFFFFF;
+  font-weight: 300;
+  letter-spacing: -0.05em;
   font-variant-numeric: tabular-nums;
 }
 
-.controls-wrapper {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 5px;
+.phrase-display {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: #8E8E93;
+  font-weight: 400;
 }
 
-button {
-  padding: 10px 24px;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: white;
-  background-color: #334155;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.settings-section {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  margin-top: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.setting-item {
-  display: flex;
-  align-items: center;
-  font-size: 0.75rem;
-  color: #94a3b8;
-}
-
-.setting-item label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.setting-item input {
-  cursor: pointer;
-  accent-color: #b75fb5;
-}
-
-/* Blocklist Section Styling */
-.blocklist-section {
-  margin-top: 30px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 15px;
-  flex-grow: 1;
+/* One UI Interaction Area (Bottom) */
+.interaction-area {
+  padding: 0 16px 24px 16px;
   display: flex;
   flex-direction: column;
+  gap: 16px;
 }
 
-.section-header {
+/* One UI Card Style */
+.card {
+  background-color: #1C1C1E;
+  border-radius: 26px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #8E8E93;
+  margin: 0 0 12px 0;
+  padding: 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Setting List Item */
+.setting-list-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-}
-
-.section-header h4 {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.mode-toggle {
-  background: rgba(183, 95, 181, 0.1);
-  border: 1px solid rgba(183, 95, 181, 0.3);
-  color: #b75fb5;
-  padding: 2px 10px;
-  border-radius: 20px;
-  font-size: 0.65rem;
-  font-weight: 600;
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
-.mode-toggle:hover {
-  background: rgba(183, 95, 181, 0.2);
-  border-color: rgba(183, 95, 181, 0.5);
+.setting-list-item:last-child {
+  border-bottom: none;
 }
 
-.add-site-form {
+.setting-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Icon Squircle Frame */
+.icon-squircle {
+  width: 36px;
+  height: 36px;
+  background-color: #2C2C2E;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: #8E8E93;
+  
+  /* Samsung Squircle Approximation */
+  border-radius: 42%;
+  transition: all 0.2s ease;
+}
+
+.icon-squircle-active {
+  background-color: rgba(62, 145, 255, 0.15);
+  color: #3E91FF;
+}
+
+.setting-label {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #FFFFFF;
+}
+
+/* One UI Toggle Switch */
+.toggle {
+  width: 44px;
+  height: 24px;
+  background-color: #39393D;
+  border-radius: 12px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.toggle-active {
+  background-color: #3E91FF;
+}
+
+.toggle::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-color: #FFFFFF;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+}
+
+.toggle-active::after {
+  transform: translateX(20px);
+}
+
+/* One UI Primary Button */
+.main-action-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-pill {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 22px; /* Slight squircle feel for buttons too */
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+.btn-blue {
+  background-color: #3E91FF;
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(62, 145, 255, 0.2);
+}
+
+.btn-gray {
+  background-color: #2C2C2E;
+  color: #FFFFFF;
+}
+
+.btn-pill:active {
+  opacity: 0.7;
+}
+
+/* Blocklist Card */
+.blocklist-card {
+  padding: 0;
+}
+
+.blocklist-header {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.blocklist-header h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.add-input-row {
+  padding: 12px 16px;
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
-.add-site-form input {
-  flex-grow: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  padding: 6px 10px;
-  color: white;
-  font-size: 0.85rem;
+.add-input-row input {
+  flex: 1;
+  background-color: transparent;
+  border: none;
+  color: #FFFFFF;
+  font-size: 0.95rem;
+  outline: none;
 }
 
-.add-site-form button {
-  padding: 6px 12px;
-  background-color: #b75fb5;
+.add-input-row button {
+  background-color: transparent;
+  border: none;
+  color: #3E91FF;
+  font-weight: 600;
+  font-size: 1.2rem;
+  cursor: pointer;
 }
 
 .site-list {
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
-  padding-right: 5px;
 }
 
 .site-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 4px;
-  margin-bottom: 4px;
-  font-size: 0.85rem;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.site-item span {
+  font-size: 0.95rem;
+  color: #FFFFFF;
 }
 
 .site-item button {
-  padding: 0 6px;
-  background: transparent;
-  color: #ef4444;
-  font-size: 1.2rem;
+  background-color: transparent;
+  border: none;
+  color: #FF453A;
+  font-size: 1rem;
+  cursor: pointer;
 }
 
-.site-item button:hover {
-  color: #f87171;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
