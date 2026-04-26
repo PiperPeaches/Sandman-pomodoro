@@ -587,6 +587,12 @@ function App() {
           <div className="interaction-area" style={{ paddingTop: '24px' }}>
             <h1 className="header-title" style={{ marginBottom: '24px' }}>Debug Console</h1>
             <div className="card">
+               <h3 className="card-title">Timer Actions</h3>
+               <button onClick={() => chrome.runtime.sendMessage({ type: 'FINISH_TIMER' }).then(() => { setEndTime(null); setIsActive(false); setTimeLeft(defaultTime); })} className="btn-pill btn-gray" style={{ padding: '10px', backgroundColor: 'rgba(255, 69, 58, 0.15)', color: '#FF453A', border: '1px solid rgba(255, 69, 58, 0.3)' }}>
+                 Stop Now (Test Finish)
+               </button>
+            </div>
+            <div className="card">
                <h3 className="card-title">Presence Sync</h3>
                <button onClick={fetchOnline} className="btn-pill btn-gray" style={{ padding: '10px' }}>
                  Force Sync Presence

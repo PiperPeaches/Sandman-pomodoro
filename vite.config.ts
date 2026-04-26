@@ -29,13 +29,16 @@ export default defineConfig({
         ],
         web_accessible_resources: [
           {
-            resources: ['auth.html'],
+            resources: ['auth.html', 'audio/start.mp3', 'audio/end.mp3'],
             matches: ['<all_urls>']
           }
         ],
         browser_specific_settings: {
           gecko: {
             id: 'sandman@example.com'
+          },
+          chrome: {
+            permissions: ['offscreen']
           }
         }
       }
@@ -45,7 +48,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: 'index.html',
-        auth: 'auth.html'
+        auth: 'auth.html',
+        offscreen: 'offscreen.html'
       }
     }
   },

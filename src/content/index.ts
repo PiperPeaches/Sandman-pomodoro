@@ -5,6 +5,7 @@
  */
 
 let sleepOverlay: HTMLDivElement | null = null;
+let stopMusicPopup: HTMLDivElement | null = null;
 let removalTimeout: number | null = null;
 let isFinished = false;
 let lastTimeLeft = 0;
@@ -270,7 +271,7 @@ function handleStateUpdate(data: StateUpdateData) {
     startLocalTicker();
   } else if (sleepOverlay) {
     if (lastTimeLeft === 0) {
-      setFinishedState();
+      showStopMusicPopup();
     } else {
       removeSleepOverlay();
     }
@@ -286,6 +287,10 @@ chrome.runtime.onMessage.addListener((message: StateUpdateData & { type: string;
     lastTimeLeft = message.timeLeft;
     if (!tickerInterval && isActiveState && isAsleepState) startLocalTicker();
     updateYouTubeUI();
+  } else if (message.type === 'SESSION_COMPLETE') {
+    showStopMusicPopup();
+  } else if (message.type === 'HIDE_STOP_POPUP') {
+    removeStopMusicPopup();
   }
 });
 
@@ -306,7 +311,7 @@ function startLocalTicker() {
     }
     updateTimer(displayTime);
     if (displayTime === 0) { 
-      setFinishedState(); 
+      showStopMusicPopup(); 
       stopLocalTicker(); 
       chrome.runtime.sendMessage({ type: 'FINISH_TIMER' }).catch(() => {});
     }
@@ -362,7 +367,7 @@ function showSleepOverlay(timeLeft: number) {
     const timer = document.createElement('p');
     timer.id = 'sandman-sleep-timer';
     timer.innerText = formatTime(timeLeft);
-    Object.assign(timer.style, { fontSize: '2rem', color: 'rgba(255, 255, 255, 0.7)', fontVariantNumeric: 'tabular-nums' });
+    Object.assign(timer.style, { fontSize: '2rem', color: 'white', fontVariantNumeric: 'tabular-nums' });
     content.appendChild(text); 
     content.appendChild(subtext);
     content.appendChild(timer); 
@@ -409,7 +414,7 @@ const fsSource = `
   const float uContrast = 3.5;
   const float uLighting = 0.4;
   const float uSpinAmount = 0.25;
-  const float uPixelFilter = 700.0;
+  const float uPixelFilter = 400.0;
   const float uSpinEase = 1.0;
   const bool uIsRotate = false;
   varying vec2 vUv;
@@ -427,7 +432,7 @@ const fsSource = `
       float baseSpeed = iTime * uSpinSpeed;
       speed = baseSpeed + mouseInfluence * 2.0;
       vec2 uv2 = vec2(uv.x + uv.y);
-      for(int i = 0; i < 5; i++) {
+      for(int i = 0; i < 3; i++) {
           uv2 += sin(max(uv.x, uv.y)) + uv;
           uv += 0.5 * vec2(cos(5.1123314 + 0.353 * uv2.y + speed * 0.131121), sin(uv2.x - 0.113 * speed));
           uv -= cos(uv.x + uv.y) - sin(uv.x * 0.711 - uv.y);
@@ -566,29 +571,83 @@ function blockEmbeds() {
   });
 }
 
-function setFinishedState() {
-  if (isFinished || !sleepOverlay) return; isFinished = true;
-  const t = document.getElementById('sandman-main-text'); if (t) t.innerText = 'You have finished your focus session';
-  const tm = document.getElementById('sandman-sleep-timer'); if (tm) tm.style.display = 'none';
-  const c = document.getElementById('sandman-content-container');
-  if (c && !document.getElementById('sandman-wakeup-btn')) {
-    const b = document.createElement('button'); b.id = 'sandman-wakeup-btn'; b.innerText = 'Wake Up';
-    Object.assign(b.style, { marginTop: '30px', padding: '16px 48px', fontSize: '1.2rem', fontWeight: '600', color: 'white', backgroundColor: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', borderRadius: '50px', cursor: 'pointer', backdropFilter: 'blur(10px)', transition: 'all 0.3s ease', animation: 'sandman-fade-in 1s ease-out' });
-    b.onmouseover = () => b.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'; b.onmouseout = () => b.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-    b.onclick = () => removeSleepOverlay(); c.appendChild(b);
-  }
+function showStopMusicPopup() {
+  if (stopMusicPopup || removalTimeout) return;
+  isFinished = true;
+  
+  if (sleepOverlay) removeSleepOverlay(true); 
+
+  injectStyles();
+  pauseAllMedia();
+  
+  stopMusicPopup = document.createElement('div');
+  stopMusicPopup.id = 'sandman-wake-popup';
+  Object.assign(stopMusicPopup.style, {
+    position: 'fixed', bottom: '24px', left: '24px', width: 'auto', zIndex: '2147483647',
+    display: 'flex', flexDirection: 'column', padding: '12px',
+    color: 'white', fontFamily: "'MontserratAlternates', system-ui, sans-serif", pointerEvents: 'all',
+    userSelect: 'none', background: 'rgba(28, 28, 30, 0.8)', backdropFilter: 'blur(20px) saturate(120%)',
+    borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+    animation: 'sandman-fade-in 0.4s ease-out'
+  });
+
+  const title = document.createElement('h3');
+  title.innerText = 'SESSION COMPLETED';
+  Object.assign(title.style, { fontSize: '0.85rem', fontWeight: '700', margin: '0 0 12px 0', color: 'white', letterSpacing: '0.05em' });
+  stopMusicPopup.appendChild(title);
+
+  const stopBtn = document.createElement('button');
+  stopBtn.innerText = 'STOP TIMER';
+  Object.assign(stopBtn.style, {
+    padding: '10px 16px', fontSize: '0.75rem', fontWeight: '800', color: 'white',
+    backgroundColor: 'rgba(255, 69, 58, 0.15)', border: '1px solid rgba(255, 69, 58, 0.3)',
+    borderRadius: '12px', cursor: 'pointer', backdropFilter: 'blur(10px)', transition: 'all 0.3s ease',
+    textTransform: 'uppercase', letterSpacing: '0.05em'
+  });
+  stopBtn.onclick = () => {
+     chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
+     removeStopMusicPopup();
+  };
+  stopMusicPopup.appendChild(stopBtn);
+  document.body.appendChild(stopMusicPopup);
 }
 
-function removeSleepOverlay() {
+function removeStopMusicPopup() {
+  if (!stopMusicPopup) return;
+  
+  Object.assign(stopMusicPopup.style, {
+    opacity: '0',
+    transform: 'translateY(10px)',
+    pointerEvents: 'none',
+    transition: 'opacity 0.4s ease-in, transform 0.4s ease-in'
+  });
+
+  setTimeout(() => {
+    if (stopMusicPopup) {
+      stopMusicPopup.remove();
+      stopMusicPopup = null;
+    }
+    isFinished = false;
+  }, 400);
+}
+
+function removeSleepOverlay(immediate = false) {
   if (!sleepOverlay || removalTimeout) return;
   stopLocalTicker(); if (mainAnimationFrameId) cancelAnimationFrame(mainAnimationFrameId);
-  document.removeEventListener('play', pauseAllMedia, true); document.body.style.overflow = '';
+  document.removeEventListener('play', pauseAllMedia, true); 
   
+  if (immediate) {
+    if (sleepOverlay) sleepOverlay.remove();
+    sleepOverlay = null;
+    document.body.style.overflow = '';
+    return;
+  }
+
   sleepOverlay.style.opacity = '0';
   sleepOverlay.style.pointerEvents = 'none';
   sleepOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0)';
   sleepOverlay.style.backdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
-  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
+  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'blur(0px) grayscale(1) saturate(100%)';
 
   removalTimeout = window.setTimeout(() => {
     if (sleepOverlay && (!isActiveState || !isAsleepState)) {
@@ -596,6 +655,7 @@ function removeSleepOverlay() {
       sleepOverlay = null;
     }
     removalTimeout = null;
+    document.body.style.overflow = '';
   }, 1500);
 }
 

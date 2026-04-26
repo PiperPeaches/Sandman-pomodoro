@@ -16,6 +16,61 @@ let noBreaks = false;
 let username = 'Dreamer';
 let totalFocusTime = 0; // in seconds
 
+let backgroundAudio: HTMLAudioElement | null = null;
+
+async function createOffscreen() {
+  if (typeof chrome.offscreen === 'undefined') return;
+  if (await chrome.offscreen.hasDocument()) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: [chrome.offscreen.Reason.AUDIO_PLAYBACK],
+    justification: 'Playback of timer start/end sounds'
+  });
+}
+
+async function playAudio(url: string) {
+  if (typeof chrome.offscreen !== 'undefined') {
+    try {
+      await createOffscreen();
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'PLAY_AUDIO', url }).catch(() => {});
+      }, 200);
+    } catch (e) {
+      console.error('Failed to create offscreen document for audio', e);
+      fallbackPlayAudio(url);
+    }
+  } else {
+    fallbackPlayAudio(url);
+  }
+}
+
+function fallbackPlayAudio(url: string) {
+  try {
+    if (backgroundAudio) {
+      backgroundAudio.pause();
+      backgroundAudio = null;
+    }
+    backgroundAudio = new Audio(url);
+    backgroundAudio.play().catch(err => {
+      console.warn("Autoplay blocked in background. Audio will play upon next interaction.", err);
+    });
+  } catch (e) {
+    console.error("Audio playback error:", e);
+  }
+}
+
+async function stopAudio() {
+  if (backgroundAudio) {
+    backgroundAudio.pause();
+    backgroundAudio.currentTime = 0;
+    backgroundAudio = null;
+  }
+
+  if (typeof chrome.offscreen !== 'undefined' && await chrome.offscreen.hasDocument()) {
+    chrome.runtime.sendMessage({ type: 'STOP_AUDIO' }).catch(() => {});
+  }
+}
+
 const commonDistractions = [
   'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
   'instagram.com', 'reddit.com', 'netflix.com', 'twitch.tv', 'tiktok.com','news.google.com'
@@ -114,6 +169,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         endTime = Date.now() + (timeLeft * 1000);
         saveState(); startAlarm(); broadcastSleep();
         updatePresence(true);
+        playAudio(chrome.runtime.getURL('audio/start.mp3'));
         sendResponse({ success: true, endTime });
         break;
       case 'PAUSE_TIMER':
@@ -122,7 +178,13 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           break;
         }
         pauseTimerInternal();
+        stopAudio();
         sendResponse({ success: true, timeLeft });
+        break;
+      case 'STOP_AUDIO':
+        stopAudio();
+        broadcastHideStopPopup();
+        sendResponse({ success: true });
         break;
       case 'RESET_TIMER':
         if (noBreaks && isActive) {
@@ -132,6 +194,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         isActive = false; timeLeft = defaultTime; endTime = null;
         saveState(); stopAlarm(); broadcastSleep();
         updatePresence(false);
+        stopAudio();
         sendResponse({ success: true });
         break;
       case 'SET_MODE':
@@ -192,13 +255,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         break;
       case 'FINISH_TIMER':
         if (isActive) {
-          const sessionTime = defaultTime;
-          totalFocusTime += sessionTime;
-          isActive = false; endTime = null; timeLeft = defaultTime;
-          saveState(); stopAlarm(); broadcastSleep();
-          updatePresence(false);
-          syncProfileToSupabase();
-          showCompletionNotification();
+          finishTimerInternal();
         }
         sendResponse({ success: true });
         break;
@@ -215,6 +272,18 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
   });
   return true;
 });
+
+function finishTimerInternal() {
+  const sessionTime = defaultTime;
+  totalFocusTime += sessionTime;
+  isActive = false; endTime = null; timeLeft = defaultTime;
+  saveState(); stopAlarm(); broadcastSleep();
+  updatePresence(false);
+  syncProfileToSupabase();
+  showCompletionNotification();
+  playAudio(chrome.runtime.getURL('audio/end.mp3'));
+  broadcastSessionComplete();
+}
 
 function pauseTimerInternal() {
   if (isActive && endTime) timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
@@ -388,33 +457,54 @@ function stopAlarm() {
   chrome.alarms.clear('sandman-heartbeat');
 }
 
-chrome.alarms.onAlarm.addListener(() => {
-  ensureInit().then(() => {
-    updatePresence(isActive);
+function checkTimer() {
+  if (isActive && endTime) {
+    const now = Date.now();
 
-    if (isActive && endTime) {
-      const now = Date.now();
-      
-      if (now >= endTime - 500) { 
-        const sessionTime = defaultTime;
-        totalFocusTime += sessionTime;
-        isActive = false; endTime = null; timeLeft = defaultTime;
-        saveState(); stopAlarm(); broadcastSleep();
-        updatePresence(false);
-        syncProfileToSupabase();
-        showCompletionNotification();
-      } else {
-        timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
-        saveState(); broadcastSleep();
-      }
+    if (now >= endTime - 500) { 
+      finishTimerInternal();
+    } else {
+      timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
+      saveState(); broadcastSleep();
     }
-  });
+  }
+}
+
+setInterval(checkTimer, 1000);
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'sandman-heartbeat') {
+    ensureInit().then(() => {
+      updatePresence(isActive);
+      checkTimer();
+    });
+  }
 });
 
 function showCompletionNotification() {
   chrome.notifications.create({
     type: 'basic', iconUrl: '/favicon.svg',
     title: 'Time is up!', message: 'Your focus session has ended.', priority: 2
+  });
+}
+
+function broadcastSessionComplete() {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'SESSION_COMPLETE' }).catch(() => {});
+      }
+    });
+  });
+}
+
+function broadcastHideStopPopup() {
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'HIDE_STOP_POPUP' }).catch(() => {});
+      }
+    });
   });
 }
 
