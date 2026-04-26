@@ -29,7 +29,7 @@ export default defineConfig({
         ],
         web_accessible_resources: [
           {
-            resources: ['auth.html', 'audio/start.mp3', 'audio/end.mp3'],
+            resources: ['auth.html', 'Audio/start.mp3', 'Audio/end.mp3', 'fonts/MontserratAlternates-SemiBold.ttf'],
             matches: ['<all_urls>']
           }
         ],

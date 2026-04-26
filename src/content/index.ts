@@ -5,7 +5,7 @@
  */
 
 let sleepOverlay: HTMLDivElement | null = null;
-let stopMusicPopup: HTMLDivElement | null = null;
+let wakeOverlay: HTMLDivElement | null = null;
 let removalTimeout: number | null = null;
 let isFinished = false;
 let lastTimeLeft = 0;
@@ -270,8 +270,8 @@ function handleStateUpdate(data: StateUpdateData) {
     showSleepOverlay(lastTimeLeft);
     startLocalTicker();
   } else if (sleepOverlay) {
-    if (lastTimeLeft === 0) {
-      showStopMusicPopup();
+    if (isFinished || lastTimeLeft === 0) {
+      setFinishedState();
     } else {
       removeSleepOverlay();
     }
@@ -288,9 +288,7 @@ chrome.runtime.onMessage.addListener((message: StateUpdateData & { type: string;
     if (!tickerInterval && isActiveState && isAsleepState) startLocalTicker();
     updateYouTubeUI();
   } else if (message.type === 'SESSION_COMPLETE') {
-    showStopMusicPopup();
-  } else if (message.type === 'HIDE_STOP_POPUP') {
-    removeStopMusicPopup();
+    showWakeOverlay();
   }
 });
 
@@ -311,7 +309,7 @@ function startLocalTicker() {
     }
     updateTimer(displayTime);
     if (displayTime === 0) { 
-      showStopMusicPopup(); 
+      showWakeOverlay();
       stopLocalTicker(); 
       chrome.runtime.sendMessage({ type: 'FINISH_TIMER' }).catch(() => {});
     }
@@ -324,6 +322,7 @@ function stopLocalTicker() {
 
 function showSleepOverlay(timeLeft: number) {
   if (removalTimeout) { clearTimeout(removalTimeout); removalTimeout = null; }
+  if (wakeOverlay) return; 
 
   if (!sleepOverlay || !document.body.contains(sleepOverlay)) {
     injectStyles();
@@ -356,7 +355,7 @@ function showSleepOverlay(timeLeft: number) {
     const text = document.createElement('h1');
     text.id = 'sandman-main-text';
     text.innerText = `${window.location.hostname} was put to sleep by Sandman`;
-    Object.assign(text.style, { fontSize: '2.8rem', fontWeight: '600', margin: '0 0 15px 0', textShadow: '0 0 40px rgba(0,0,0,0.9)' });
+    Object.assign(text.style, { fontSize: '2.8rem', fontWeight: '600', margin: '0 0 15px 0', textShadow: '0 0 40px rgba(0,0,0,0.9)', transition: 'transform 0.1s ease-out' });
     
     const subtext = document.createElement('h3');
     subtext.id = 'sandman-sub-phrase';
@@ -387,6 +386,165 @@ function showSleepOverlay(timeLeft: number) {
   document.body.style.overflow = 'hidden';
   document.addEventListener('play', pauseAllMedia, true);
   updateTimer(timeLeft);
+}
+
+function showWakeOverlay() {
+  if (wakeOverlay || removalTimeout) return;
+  isFinished = true;
+  
+  if (sleepOverlay) removeSleepOverlay(true); 
+
+  injectStyles();
+  pauseAllMedia();
+  
+  wakeOverlay = document.createElement('div');
+  wakeOverlay.id = 'sandman-wake-popup';
+  Object.assign(wakeOverlay.style, {
+    position: 'fixed', bottom: '24px', left: '24px', width: '320px', zIndex: '2147483647',
+    display: 'flex', flexDirection: 'column', padding: '24px',
+    color: 'white', fontFamily: 'Montserrat Alternates, system-ui, sans-serif', pointerEvents: 'all',
+    userSelect: 'none', background: 'rgba(28, 28, 30, 0.8)', backdropFilter: 'blur(20px) saturate(120%)',
+    borderRadius: '24px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+    animation: 'sandman-fade-in 0.4s ease-out'
+  });
+
+  const title = document.createElement('h3');
+  title.innerText = 'SESSION COMPLETE';
+  Object.assign(title.style, { fontSize: '0.75rem', fontWeight: '700', margin: '0 0 16px 0', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em', textTransform: 'uppercase' });
+  wakeOverlay.appendChild(title);
+
+  const sub = document.createElement('p');
+  sub.innerText = "Focus session ended. Time for a break?";
+  Object.assign(sub.style, { fontSize: '0.95rem', fontWeight: '400', margin: '0 0 24px 0', color: 'white', lineHeight: '1.4' });
+  wakeOverlay.appendChild(sub);
+
+  const buttonRow = document.createElement('div');
+  Object.assign(buttonRow.style, { display: 'flex', gap: '12px' });
+
+  const stopBtn = document.createElement('button');
+  stopBtn.innerText = 'STOP ALARM';
+  Object.assign(stopBtn.style, {
+    flex: '1', padding: '12px 0', fontSize: '0.7rem', fontWeight: '800', color: 'white',
+    backgroundColor: 'rgba(255, 69, 58, 0.15)', border: '1px solid rgba(255, 69, 58, 0.3)',
+    borderRadius: '14px', cursor: 'pointer', backdropFilter: 'blur(10px)', transition: 'all 0.3s ease',
+    textTransform: 'uppercase', letterSpacing: '0.05em'
+  });
+  stopBtn.onclick = () => {
+     chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
+     stopBtn.innerText = "MUTED";
+     stopBtn.style.opacity = "0.5";
+     stopBtn.style.pointerEvents = "none";
+  };
+  buttonRow.appendChild(stopBtn);
+
+  const dismissBtn = document.createElement('button');
+  dismissBtn.innerText = 'DISMISS';
+  Object.assign(dismissBtn.style, {
+    flex: '1', padding: '12px 0', fontSize: '0.7rem', fontWeight: '800', color: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)', border: '1px solid rgba(255, 255, 255, 0.15)',
+    borderRadius: '14px', cursor: 'pointer', backdropFilter: 'blur(10px)', transition: 'all 0.3s ease',
+    textTransform: 'uppercase', letterSpacing: '0.05em'
+  });
+  dismissBtn.onmouseover = () => dismissBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+  dismissBtn.onmouseout = () => dismissBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+  dismissBtn.onclick = () => {
+    chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
+    removeWakeOverlay();
+  };
+  buttonRow.appendChild(dismissBtn);
+
+  wakeOverlay.appendChild(buttonRow);
+  document.body.appendChild(wakeOverlay);
+}
+
+function removeWakeOverlay() {
+  if (!wakeOverlay) return;
+  
+  Object.assign(wakeOverlay.style, {
+    opacity: '0',
+    transform: 'translateY(10px)',
+    pointerEvents: 'none',
+    transition: 'opacity 0.4s ease-in, transform 0.4s ease-in'
+  });
+
+  setTimeout(() => {
+    if (wakeOverlay) {
+      wakeOverlay.remove();
+      wakeOverlay = null;
+    }
+    isFinished = false;
+  }, 400);
+}
+
+function setFinishedState() {
+  if (isFinished || wakeOverlay) return; 
+  showWakeOverlay();
+}
+
+function removeSleepOverlay(immediate = false) {
+  if (!sleepOverlay || removalTimeout) return;
+  stopLocalTicker(); if (mainAnimationFrameId) cancelAnimationFrame(mainAnimationFrameId);
+  document.removeEventListener('play', pauseAllMedia, true); 
+  
+  if (immediate) {
+    if (sleepOverlay) sleepOverlay.remove();
+    sleepOverlay = null;
+    document.body.style.overflow = '';
+    return;
+  }
+
+  sleepOverlay.style.opacity = '0';
+  sleepOverlay.style.pointerEvents = 'none';
+  sleepOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+  sleepOverlay.style.backdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
+  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'blur(0px) grayscale(1) saturate(100%)';
+
+  removalTimeout = window.setTimeout(() => {
+    if (sleepOverlay && (!isActiveState || !isAsleepState)) {
+      sleepOverlay.remove();
+      sleepOverlay = null;
+    }
+    removalTimeout = null;
+    document.body.style.overflow = '';
+  }, 1500);
+}
+
+function updateTimer(s: number) { const te = document.getElementById('sandman-sleep-timer'); if (te) te.innerText = formatTime(s); }
+function formatTime(s: number) { 
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+
+  if (s >= 3600) {
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function injectStyles() {
+  if (!document.getElementById('sandman-dreamy-styles')) {
+    const s = document.createElement('style'); s.id = 'sandman-dreamy-styles';
+    s.innerHTML = `
+      @font-face {
+        font-family: 'MontserratAlternates';
+        src: url('${chrome.runtime.getURL('fonts/MontserratAlternates-SemiBold.ttf')}') format('truetype');
+        font-weight: 600;
+        font-style: normal;
+      }
+      @keyframes sandman-float { from { transform: translateY(0); } to { transform: translateY(-15px); } }
+      @keyframes sandman-fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes sandman-gradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      @keyframes sandman-wake-bounce {
+        from { transform: scale(1); }
+        to { transform: scale(1.1); }
+      }
+    `;
+    document.head.appendChild(s);
+  }
 }
 
 const vsSource = `
@@ -571,130 +729,8 @@ function blockEmbeds() {
   });
 }
 
-function showStopMusicPopup() {
-  if (stopMusicPopup || removalTimeout) return;
-  isFinished = true;
-  
-  if (sleepOverlay) removeSleepOverlay(true); 
-
-  injectStyles();
-  pauseAllMedia();
-  
-  stopMusicPopup = document.createElement('div');
-  stopMusicPopup.id = 'sandman-wake-popup';
-  Object.assign(stopMusicPopup.style, {
-    position: 'fixed', bottom: '24px', left: '24px', width: 'auto', zIndex: '2147483647',
-    display: 'flex', flexDirection: 'column', padding: '12px',
-    color: 'white', fontFamily: "'MontserratAlternates', system-ui, sans-serif", pointerEvents: 'all',
-    userSelect: 'none', background: 'rgba(28, 28, 30, 0.8)', backdropFilter: 'blur(20px) saturate(120%)',
-    borderRadius: '16px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-    animation: 'sandman-fade-in 0.4s ease-out'
-  });
-
-  const title = document.createElement('h3');
-  title.innerText = 'SESSION COMPLETED';
-  Object.assign(title.style, { fontSize: '0.85rem', fontWeight: '700', margin: '0 0 12px 0', color: 'white', letterSpacing: '0.05em' });
-  stopMusicPopup.appendChild(title);
-
-  const stopBtn = document.createElement('button');
-  stopBtn.innerText = 'STOP TIMER';
-  Object.assign(stopBtn.style, {
-    padding: '10px 16px', fontSize: '0.75rem', fontWeight: '800', color: 'white',
-    backgroundColor: 'rgba(255, 69, 58, 0.15)', border: '1px solid rgba(255, 69, 58, 0.3)',
-    borderRadius: '12px', cursor: 'pointer', backdropFilter: 'blur(10px)', transition: 'all 0.3s ease',
-    textTransform: 'uppercase', letterSpacing: '0.05em'
-  });
-  stopBtn.onclick = () => {
-     chrome.runtime.sendMessage({ type: 'STOP_AUDIO' });
-     removeStopMusicPopup();
-  };
-  stopMusicPopup.appendChild(stopBtn);
-  document.body.appendChild(stopMusicPopup);
-}
-
-function removeStopMusicPopup() {
-  if (!stopMusicPopup) return;
-  
-  Object.assign(stopMusicPopup.style, {
-    opacity: '0',
-    transform: 'translateY(10px)',
-    pointerEvents: 'none',
-    transition: 'opacity 0.4s ease-in, transform 0.4s ease-in'
-  });
-
-  setTimeout(() => {
-    if (stopMusicPopup) {
-      stopMusicPopup.remove();
-      stopMusicPopup = null;
-    }
-    isFinished = false;
-  }, 400);
-}
-
-function removeSleepOverlay(immediate = false) {
-  if (!sleepOverlay || removalTimeout) return;
-  stopLocalTicker(); if (mainAnimationFrameId) cancelAnimationFrame(mainAnimationFrameId);
-  document.removeEventListener('play', pauseAllMedia, true); 
-  
-  if (immediate) {
-    if (sleepOverlay) sleepOverlay.remove();
-    sleepOverlay = null;
-    document.body.style.overflow = '';
-    return;
-  }
-
-  sleepOverlay.style.opacity = '0';
-  sleepOverlay.style.pointerEvents = 'none';
-  sleepOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0)';
-  sleepOverlay.style.backdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
-  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'blur(0px) grayscale(1) saturate(100%)';
-
-  removalTimeout = window.setTimeout(() => {
-    if (sleepOverlay && (!isActiveState || !isAsleepState)) {
-      sleepOverlay.remove();
-      sleepOverlay = null;
-    }
-    removalTimeout = null;
-    document.body.style.overflow = '';
-  }, 1500);
-}
-
-function updateTimer(s: number) { const te = document.getElementById('sandman-sleep-timer'); if (te) te.innerText = formatTime(s); }
-function formatTime(s: number) { 
-  const hrs = Math.floor(s / 3600);
-  const mins = Math.floor((s % 3600) / 60);
-  const secs = s % 60;
-
-  if (hrs > 0) {
-    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function injectStyles() {
-  if (!document.getElementById('sandman-dreamy-styles')) {
-    const s = document.createElement('style'); s.id = 'sandman-dreamy-styles';
-    s.innerHTML = `
-      @font-face {
-        font-family: 'MontserratAlternates';
-        src: url('${chrome.runtime.getURL('fonts/MontserratAlternates-SemiBold.ttf')}') format('truetype');
-        font-weight: 600;
-        font-style: normal;
-      }
-      @keyframes sandman-float { from { transform: translateY(0); } to { transform: translateY(-15px); } }
-      @keyframes sandman-fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      @keyframes sandman-gradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
-    `;
-    document.head.appendChild(s);
-  }
-}
-
 const observer = new MutationObserver(() => {
-  if (isActiveState && isAsleepState && !isFinished && !removalTimeout) {
+  if (isActiveState && isAsleepState && !isFinished && !wakeOverlay) {
     if (sleepOverlay && !document.body.contains(sleepOverlay)) {
       sleepOverlay = null; showSleepOverlay(lastTimeLeft); startLocalTicker();
     }
@@ -730,4 +766,7 @@ setInterval(() => {
   }
 }, 1000);
 
-window.addEventListener('resize', () => { if (sleepOverlay) { const c = sleepOverlay.querySelector('canvas'); if (c) { c.width = window.innerWidth; c.height = window.innerHeight; } } });
+window.addEventListener('resize', () => { 
+  if (sleepOverlay) { const c = sleepOverlay.querySelector('canvas'); if (c) { c.width = window.innerWidth; c.height = window.innerHeight; } } 
+  if (wakeOverlay) { const c = wakeOverlay.querySelector('canvas'); if (c) { c.width = window.innerWidth; c.height = window.innerHeight; } }
+});
