@@ -377,7 +377,7 @@ function showSleepOverlay(timeLeft: number) {
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
     backdropFilter: 'blur(10px) saturate(100%)'
   });
-  (sleepOverlay.style as any).webkitBackdropFilter = 'blur(10px) saturate(100%)';
+  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'blur(10px) saturate(100%)';
 
   document.body.style.overflow = 'hidden';
   document.addEventListener('play', pauseAllMedia, true);
@@ -588,7 +588,7 @@ function removeSleepOverlay() {
   sleepOverlay.style.pointerEvents = 'none';
   sleepOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0)';
   sleepOverlay.style.backdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
-  (sleepOverlay.style as any).webkitBackdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
+  (sleepOverlay.style as CSSStyleDeclaration & { webkitBackdropFilter: string }).webkitBackdropFilter = 'grayscale(1) blur(0px) saturate(100%)';
 
   removalTimeout = window.setTimeout(() => {
     if (sleepOverlay && (!isActiveState || !isAsleepState)) {
@@ -600,7 +600,17 @@ function removeSleepOverlay() {
 }
 
 function updateTimer(s: number) { const te = document.getElementById('sandman-sleep-timer'); if (te) te.innerText = formatTime(s); }
-function formatTime(s: number) { return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`; }
+function formatTime(s: number) { 
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 function injectStyles() {
   if (!document.getElementById('sandman-dreamy-styles')) {
     const s = document.createElement('style'); s.id = 'sandman-dreamy-styles';

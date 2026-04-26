@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package": "npm run build && cd dist && zip -r ../sandman-focus.xpi * && cd .. && zip -r sandman-focus.crx dist/*"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.2.0",
     "@fortawesome/free-brands-svg-icons": "^7.2.0",
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.3.1",
+    "@supabase/supabase-js": "^2.104.1",
     "ogl": "^1.0.11",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"

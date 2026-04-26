@@ -1,3 +1,5 @@
+import { supabase } from '../utils/supabase';
+
 let timeLeft = 25 * 60; 
 let defaultTime = 25 * 60;
 let endTime: number | null = null; 
@@ -5,12 +7,14 @@ let isActive = false;
 let mode: 'blacklist' | 'whitelist' = 'blacklist';
 let blocklist: string[] = [];
 
-// Settings
+// Settings & Profile
 let blockAI = false;
 let blockCommon = true;
 let strictSubdomains = false;
 let blockYouTube = false;
 let noBreaks = false;
+let username = 'Dreamer';
+let totalFocusTime = 0; // in seconds
 
 const commonDistractions = [
   'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
@@ -31,7 +35,7 @@ const initPromise = new Promise<void>((resolve) => {
   chrome.storage.local.get([
     'blocklist', 'mode', 'timeLeft', 'isActive', 'endTime', 
     'blockAI', 'blockCommon', 'strictSubdomains', 'blockYouTube',
-    'noBreaks', 'defaultTime'
+    'noBreaks', 'defaultTime', 'username', 'totalFocusTime'
   ], (result) => {
     if (Array.isArray(result.blocklist)) blocklist = result.blocklist;
     if (result.mode === 'blacklist' || result.mode === 'whitelist') mode = result.mode;
@@ -44,6 +48,8 @@ const initPromise = new Promise<void>((resolve) => {
     if (typeof result.strictSubdomains === 'boolean') strictSubdomains = result.strictSubdomains;
     if (typeof result.blockYouTube === 'boolean') blockYouTube = result.blockYouTube;
     if (typeof result.noBreaks === 'boolean') noBreaks = result.noBreaks;
+    if (typeof result.username === 'string') username = result.username;
+    if (typeof result.totalFocusTime === 'number') totalFocusTime = result.totalFocusTime;
 
     if (isActive && endTime) {
       const now = Date.now();
@@ -56,6 +62,7 @@ const initPromise = new Promise<void>((resolve) => {
       }
     }
     isInitialized = true;
+    syncProfileToSupabase();
     resolve();
   });
 });
@@ -78,6 +85,8 @@ interface TimerMessage {
     blockYouTube?: boolean;
     noBreaks?: boolean;
     defaultTime?: number;
+    username?: string;
+    idleInterval?: number;
   };
 }
 
@@ -88,14 +97,23 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
         sendResponse({ 
           timeLeft: currentRemaining, isActive, blocklist, mode, endTime,
-          settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
+          settings: { 
+            blockAI, blockCommon, strictSubdomains, blockYouTube, 
+            noBreaks, defaultTime, username, totalFocusTime 
+          }
         });
         break;
       }
       case 'START_TIMER':
+        if (!hasActiveBlocks()) {
+          sendResponse({ success: false, error: 'Anti-Cheat: You must have at least one block active to start focusing.' });
+          break;
+        }
+        
         isActive = true;
         endTime = Date.now() + (timeLeft * 1000);
         saveState(); startAlarm(); broadcastSleep();
+        updatePresence(true);
         sendResponse({ success: true, endTime });
         break;
       case 'PAUSE_TIMER':
@@ -103,9 +121,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           sendResponse({ success: false, error: 'No Breaks mode is active' });
           break;
         }
-        if (isActive && endTime) timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-        isActive = false; endTime = null;
-        saveState(); stopAlarm(); broadcastSleep();
+        pauseTimerInternal();
         sendResponse({ success: true, timeLeft });
         break;
       case 'RESET_TIMER':
@@ -115,6 +131,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         }
         isActive = false; timeLeft = defaultTime; endTime = null;
         saveState(); stopAlarm(); broadcastSleep();
+        updatePresence(false);
         sendResponse({ success: true });
         break;
       case 'SET_MODE':
@@ -127,9 +144,7 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         break;
       case 'UPDATE_SETTINGS':
         if (message.settings) {
-          // If noBreaks is on and timer is running, block all setting changes except maybe noBreaks itself?
-          // Usually "lock in" means you can't even turn it off.
-          if (noBreaks && isActive) {
+          if (noBreaks && isActive && (message.settings.noBreaks === undefined)) {
              sendResponse({ success: false, error: 'No Breaks mode is active' });
              break;
           }
@@ -139,6 +154,10 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
           if (message.settings.strictSubdomains !== undefined) strictSubdomains = message.settings.strictSubdomains;
           if (message.settings.blockYouTube !== undefined) blockYouTube = message.settings.blockYouTube;
           if (message.settings.noBreaks !== undefined) noBreaks = message.settings.noBreaks;
+          if (message.settings.username !== undefined) {
+             username = message.settings.username;
+             syncProfileToSupabase();
+          }
           if (message.settings.defaultTime !== undefined) {
              defaultTime = message.settings.defaultTime;
              if (!isActive) timeLeft = defaultTime;
@@ -173,16 +192,171 @@ chrome.runtime.onMessage.addListener((message: TimerMessage, _sender, sendRespon
         break;
       case 'FINISH_TIMER':
         if (isActive) {
+          const sessionTime = defaultTime;
+          totalFocusTime += sessionTime;
           isActive = false; endTime = null; timeLeft = defaultTime;
           saveState(); stopAlarm(); broadcastSleep();
+          updatePresence(false);
+          syncProfileToSupabase();
           showCompletionNotification();
         }
         sendResponse({ success: true });
         break;
+      case 'SIGN_OUT':
+        supabase?.auth.signOut().then(() => {
+          broadcastSleep();
+        });
+        sendResponse({ success: true });
+        break;
+      case 'GET_ONLINE_DATA':
+        fetchOnlineData().then(data => sendResponse(data));
+        return true; 
     }
   });
   return true;
 });
+
+function pauseTimerInternal() {
+  if (isActive && endTime) timeLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+  isActive = false; endTime = null;
+  saveState(); stopAlarm(); broadcastSleep();
+  updatePresence(false);
+}
+
+if (supabase) {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    broadcastSleep();
+    if (session?.user) {
+      syncProfileToSupabase();
+    }
+  });
+}
+
+async function syncProfileToSupabase() {
+  if (!supabase) return;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return;
+
+  try {
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('username, total_focus_time')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+    let finalUsername = username;
+    let finalTotalTime = totalFocusTime;
+
+    if (existingUser) {
+      finalUsername = existingUser.username || session.user.user_metadata?.username || username;
+      finalTotalTime = Math.max(totalFocusTime, existingUser.total_focus_time || 0);
+      
+      if (finalUsername !== username || finalTotalTime !== totalFocusTime) {
+        username = finalUsername;
+        totalFocusTime = finalTotalTime;
+        saveState();
+        broadcastSleep();
+      }
+    } else if (session.user.user_metadata?.username) {
+      username = session.user.user_metadata.username;
+      finalUsername = username;
+      saveState();
+      broadcastSleep();
+    }
+
+    await supabase
+      .from('users')
+      .upsert({ 
+        id: session.user.id, 
+        username: finalUsername, 
+        total_focus_time: finalTotalTime,
+        is_active: isActive,
+        last_active: new Date().toISOString(),
+        last_seen: new Date().toISOString()
+      }, { onConflict: 'id' });
+  } catch (e) {
+    console.error('Supabase Sync Exception:', e);
+  }
+}
+
+async function updatePresence(is_active: boolean) {
+  if (!supabase) return;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return;
+
+  try {
+    await supabase
+      .from('users')
+      .update({ 
+        is_active, 
+        last_active: new Date().toISOString(),
+        last_seen: new Date().toISOString()
+      })
+      .eq('id', session.user.id);
+  } catch {
+    /* ignore activity update errors */
+  }
+}
+
+async function fetchOnlineData() {
+  if (!supabase) return { liveUsers: [], leaderboard: [], status: 'no_config', userRank: 0 };
+  const { data: { session } } = await supabase.auth.getSession();
+
+  try {
+    // 1. Fetch Leaderboard
+    const { data: leaderboard, error: lError } = await supabase
+      .from('users')
+      .select('username, total_focus_time, is_active, last_seen')
+      .order('total_focus_time', { ascending: false })
+      .limit(10);
+    
+    if (lError) throw new Error(`Leaderboard: ${lError.message}`);
+
+    // 2. Fetch Recent/Live Users
+    const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: allUsers, error: vError } = await supabase
+      .from('users')
+      .select('username, is_active, last_seen')
+      .order('last_seen', { ascending: false })
+      .limit(20);
+    
+    if (vError) throw new Error(`Live Users: ${vError.message}`);
+
+    const liveUsers = (allUsers || []).map(u => ({
+       username: u.username,
+       status: u.is_active ? 'focused' : (u.last_seen > fiveMinsAgo ? 'online' : 'offline')
+    }));
+
+    // 3. Calculate Rank
+    let userRank = 0;
+    if (session?.user) {
+      const { count, error: rError } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .gt('total_focus_time', totalFocusTime);
+      
+      if (!rError) userRank = (count || 0) + 1;
+      
+      // Auto-sync heartbeat while page is open
+      updatePresence(isActive);
+    }
+
+    return { 
+      leaderboard: (leaderboard || []).map(u => ({
+        ...u,
+        status: u.is_active ? 'focused' : (u.last_seen > fiveMinsAgo ? 'online' : 'offline')
+      })), 
+      liveUsers,
+      status: 'ok',
+      session,
+      userRank
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('Online Fetch Error:', message);
+    return { liveUsers: [], leaderboard: [], status: 'error', errorMessage: message, session, userRank: 0 };
+  }
+}
 
 function normalizeSite(site: string): string {
   let res = site.trim().toLowerCase();
@@ -193,7 +367,7 @@ function normalizeSite(site: string): string {
       res = res.split('/')[0];
     }
   } catch {
-    // Keep as is if parsing fails
+    /* ignore URL parsing errors */
   }
   return res.replace(/^www\./, '');
 }
@@ -202,7 +376,7 @@ function saveState() {
   chrome.storage.local.set({ 
     blocklist, mode, timeLeft, isActive, endTime,
     blockAI, blockCommon, strictSubdomains, blockYouTube,
-    noBreaks, defaultTime
+    noBreaks, defaultTime, username, totalFocusTime
   });
 }
 
@@ -216,11 +390,18 @@ function stopAlarm() {
 
 chrome.alarms.onAlarm.addListener(() => {
   ensureInit().then(() => {
+    updatePresence(isActive);
+
     if (isActive && endTime) {
       const now = Date.now();
-      if (now >= endTime - 500) { // Buffer to account for timer precision
+      
+      if (now >= endTime - 500) { 
+        const sessionTime = defaultTime;
+        totalFocusTime += sessionTime;
         isActive = false; endTime = null; timeLeft = defaultTime;
         saveState(); stopAlarm(); broadcastSleep();
+        updatePresence(false);
+        syncProfileToSupabase();
         showCompletionNotification();
       } else {
         timeLeft = Math.max(0, Math.ceil((endTime - now) / 1000));
@@ -244,7 +425,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - Date.now()) / 1000)) : timeLeft;
       chrome.tabs.sendMessage(tabId, { 
         type: 'UPDATE_SLEEP', isAsleep: isDistracting, isActive, timeLeft: currentRemaining,
-        endTime, blocklist, mode, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
+        endTime, blocklist, mode, settings: { 
+          blockAI, blockCommon, strictSubdomains, blockYouTube, 
+          noBreaks, defaultTime, username, totalFocusTime 
+        }
       }).catch(() => {});
     });
   }
@@ -252,8 +436,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 function checkIsDistracting(url: string | undefined): boolean {
   if (!url) return false;
-  let hostname = '';
-  try { hostname = new URL(url).hostname; } catch { hostname = url; }
+  const hostname = (() => {
+    try { return new URL(url).hostname; } catch { return url; }
+  })();
   if (!hostname || hostname.startsWith('chrome') || hostname.startsWith('about') || hostname.startsWith('edge') || hostname.startsWith('chrome-extension')) return false;
 
   const normalizedHostname = hostname.replace(/^www\./, '');
@@ -276,19 +461,28 @@ function checkIsDistracting(url: string | undefined): boolean {
   }
 }
 
+// ANTI-CHEAT: Ensure at least one block is active
+function hasActiveBlocks(): boolean {
+  if (blockYouTube || blockAI || blockCommon) return true;
+  if (mode === 'whitelist') return true;
+  if (mode === 'blacklist' && blocklist.length > 0) return true;
+  return false;
+}
+
 let lastBroadcastTime = 0;
 function broadcastSleep() {
   const now = Date.now();
   const currentRemaining = isActive && endTime ? Math.max(0, Math.ceil((endTime - now) / 1000)) : timeLeft;
   const stateUpdate = { 
     type: 'UPDATE_SLEEP', isActive, timeLeft: currentRemaining, endTime,
-    mode, blocklist, settings: { blockAI, blockCommon, strictSubdomains, blockYouTube, noBreaks, defaultTime }
+    mode, blocklist, settings: { 
+      blockAI, blockCommon, strictSubdomains, blockYouTube, 
+      noBreaks, defaultTime, username, totalFocusTime 
+    }
   };
 
-  // Only broadcast if something changed or it's been a while (reduce jitter)
   chrome.runtime.sendMessage(stateUpdate).catch(() => {});
   
-  // Throttle TICK messages to once per second roughly
   if (now - lastBroadcastTime > 900) {
     chrome.runtime.sendMessage({ type: 'TICK', timeLeft: currentRemaining }).catch(() => {});
     lastBroadcastTime = now;

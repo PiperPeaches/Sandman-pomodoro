@@ -11,7 +11,7 @@ export default defineConfig({
         manifest_version: 3,
         name: 'Sandman Focus',
         version: '1.0',
-        permissions: ['storage', 'activeTab', 'scripting', 'notifications', 'tabs', 'alarms'],
+        permissions: ['storage', 'activeTab', 'scripting', 'notifications', 'tabs', 'alarms', 'idle', 'identity'],
         host_permissions: ['<all_urls>'],
         action: {
           default_popup: 'index.html',
@@ -27,6 +27,12 @@ export default defineConfig({
             js: ['src/content/index.ts']
           }
         ],
+        web_accessible_resources: [
+          {
+            resources: ['auth.html'],
+            matches: ['<all_urls>']
+          }
+        ],
         browser_specific_settings: {
           gecko: {
             id: 'sandman@example.com'
@@ -35,6 +41,14 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      input: {
+        popup: 'index.html',
+        auth: 'auth.html'
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src')
